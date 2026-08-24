@@ -1,0 +1,10 @@
+# Every file in this repository is LF, regardless of contributor platform.
+# Windows hosts commonly set core.autocrlf=true, which would silently convert
+# checked-out sources to CRLF. The upstream RVC source is fetched as a flake
+# input, not checked out from here, and the patch set is generated pure-LF
+# (the build and generate_patches.py normalise upstream Python to LF first),
+# so this only governs rvc.nix's own files.
+* text=auto eol=lf
+
+# Unified diffs encode blank context lines with a required leading space.
+*.patch -whitespace

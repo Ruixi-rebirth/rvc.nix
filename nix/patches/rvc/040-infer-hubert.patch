@@ -1,0 +1,25 @@
+# Description: Resolve the packaged HuBERT model from the mutable RVC data directory.
+# Generated-by: nix/patches/generate_patches.py
+# Source-of-truth: nix/patches/rules.py
+#
+--- a/infer/hubert.py
++++ b/infer/hubert.py
+@@ -1,5 +1,6 @@
+ import logging
++import os
+ from functools import lru_cache
+ from pathlib import Path
+ 
+ import torch
+@@ -10,9 +11,10 @@
+ 
+ 
+ logger = logging.getLogger(__name__)
+ 
+-PROJECT_ROOT = Path(__file__).resolve().parent.parent
++SOURCE_ROOT = Path(__file__).resolve().parent.parent
++PROJECT_ROOT = Path(os.environ.get("RVC_DATA_DIR", SOURCE_ROOT)).expanduser().resolve()
+ 
+ 
+ class HubertModelWithFinalProj(HubertModel):
+     def __init__(self, config):

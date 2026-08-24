@@ -1,0 +1,80 @@
+# Description: Constrain generated model outputs to the weights directory.
+# Generated-by: nix/patches/generate_patches.py
+# Source-of-truth: nix/patches/rules.py
+#
+--- a/train/process_ckpt.py
++++ b/train/process_ckpt.py
+@@ -1,16 +1,30 @@
+ import os
+ import sys
+ import traceback
+ import json
++import re
++from pathlib import Path
+ from collections import OrderedDict
+ 
+ import torch
+ 
+ from i18n.i18n import I18nAuto
+ from tools.file_io import read_text
+ 
+ i18n = I18nAuto()
++WEIGHT_ROOT = Path(os.environ.get("weight_root", "assets/weights")).expanduser().resolve()
++
++
++def model_output_path(filename):
++    filename = str(filename or "").strip()
++    if filename in {"", ".", ".."} or re.fullmatch(r"[A-Za-z0-9._-]{1,132}", filename) is None:
++        raise ValueError(i18n("模型名称只能包含字母、数字、点、下划线和连字符"))
++    output = (WEIGHT_ROOT / filename).resolve()
++    if not output.is_relative_to(WEIGHT_ROOT):
++        raise ValueError(i18n("模型输出路径必须位于weights目录"))
++    WEIGHT_ROOT.mkdir(parents=True, exist_ok=True)
++    return output
+ 
+ 
+ def normalize_speaker_info(speaker_info):
+     result = []
+@@ -62,9 +76,9 @@
+         opt["version"] = version
+         speaker_info = normalize_speaker_info(getattr(hps, "speaker_info", []))
+         if speaker_info:
+             opt["speaker_info"] = speaker_info
+-        torch.save(opt, "assets/weights/%s.pth" % name)
++        torch.save(opt, model_output_path("%s.pth" % name))
+         return i18n("成功")
+     except:
+         return traceback.format_exc()
+ 
+@@ -212,9 +226,9 @@
+         opt["sr"] = sr
+         opt["f0"] = int(if_f0)
+         if speaker_info:
+             opt["speaker_info"] = speaker_info
+-        torch.save(opt, "assets/weights/%s.pth" % name)
++        torch.save(opt, model_output_path("%s.pth" % name))
+         return i18n("成功")
+     except:
+         return traceback.format_exc()
+ 
+@@ -224,9 +238,9 @@
+         ckpt = torch.load(path, map_location="cpu")
+         ckpt["info"] = info
+         if name == "":
+             name = os.path.basename(path)
+-        torch.save(ckpt, "assets/weights/%s" % name)
++        torch.save(ckpt, model_output_path(name))
+         return i18n("成功")
+     except:
+         return traceback.format_exc()
+ 
+@@ -286,8 +300,8 @@
+         opt["version"] = version
+         opt["info"] = info
+         if speaker_info1 and speaker_info1 == speaker_info2:
+             opt["speaker_info"] = speaker_info1
+-        torch.save(opt, "assets/weights/%s.pth" % name)
++        torch.save(opt, model_output_path("%s.pth" % name))
+         return i18n("成功")
+     except:
+         return traceback.format_exc()

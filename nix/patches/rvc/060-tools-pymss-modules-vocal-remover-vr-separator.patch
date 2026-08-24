@@ -1,0 +1,24 @@
+# Description: Remove the unrestricted-pickle fallback from VR model loading.
+# Generated-by: nix/patches/generate_patches.py
+# Source-of-truth: nix/patches/rules.py
+#
+--- a/tools/pymss/modules/vocal_remover/vr_separator.py
++++ b/tools/pymss/modules/vocal_remover/vr_separator.py
+@@ -174,14 +174,11 @@
+             self.is_vr_51_model = True
+         else:
+             self.model_run = determine_model_capacity(self.model_params.param["bins"] * 2, nn_arch_size)
+ 
+-        try:
+-            state_dict = torch.load(self.model_path, map_location="cpu", weights_only=True)
+-        except TypeError:
+-            state_dict = torch.load(self.model_path, map_location="cpu")
+-        except Exception:
+-            state_dict = torch.load(self.model_path, map_location="cpu", weights_only=False)
++        state_dict = torch.load(
++            self.model_path, map_location="cpu", weights_only=True
++        )
+         self.model_run.load_state_dict(state_dict)
+         self.model_run.eval()
+         if self.fuse_conv_bn:
+             fused = _fuse_sequential_conv_bn(self.model_run)

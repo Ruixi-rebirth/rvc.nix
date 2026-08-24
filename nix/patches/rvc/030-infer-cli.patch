@@ -1,0 +1,18 @@
+# Description: Resolve CLI assets from the mutable RVC data directory.
+# Generated-by: nix/patches/generate_patches.py
+# Source-of-truth: nix/patches/rules.py
+#
+--- a/infer/cli.py
++++ b/infer/cli.py
+@@ -12,9 +12,10 @@
+     category=FutureWarning,
+ )
+ 
+ 
+-PROJECT_ROOT = Path(__file__).resolve().parent.parent
++SOURCE_ROOT = Path(__file__).resolve().parent.parent
++PROJECT_ROOT = Path(os.environ.get("RVC_DATA_DIR", SOURCE_ROOT)).expanduser().resolve()
+ os.chdir(PROJECT_ROOT)
+ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+ os.environ.setdefault("weight_root", str(PROJECT_ROOT / "assets" / "weights"))
+ os.environ.setdefault("index_root", str(PROJECT_ROOT / "logs"))

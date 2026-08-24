@@ -1,0 +1,50 @@
+# Description: Bind the WebUI to a configurable loopback default and support headless smoke tests.
+# Generated-by: nix/patches/generate_patches.py
+# Source-of-truth: nix/patches/rules.py
+#
+--- a/webui.py
++++ b/webui.py
+@@ -26,8 +26,9 @@
+ os.environ.setdefault("outside_index_root", "assets/indices")
+ os.environ.setdefault("rmvpe_root", "assets/rmvpe")
+ 
+ now_dir = os.getcwd()
++WEBUI_HOST = os.environ.get("RVC_WEBUI_HOST", "127.0.0.1")
+ tmp = os.path.join(now_dir, "TEMP")
+ os.makedirs(tmp, exist_ok=True)
+ os.environ["TEMP"] = tmp
+ for name in os.listdir(tmp):
+@@ -88,9 +89,9 @@
+ 
+ logger = logging.getLogger(__name__)
+ 
+ 
+-def find_available_port(start_port, host="0.0.0.0"):
++def find_available_port(start_port, host=WEBUI_HOST):
+     """Return the first bindable TCP port at or above ``start_port``."""
+     if not 1 <= start_port <= 65535:
+         raise ValueError(f"Port must be between 1 and 65535, got {start_port}.")
+ 
+@@ -125,9 +126,9 @@
+                 config.listen_port,
+             )
+         try:
+             queued_app.launch(
+-                server_name="0.0.0.0",
++                server_name=WEBUI_HOST,
+                 inbrowser=not config.noautoopen,
+                 server_port=config.listen_port,
+                 quiet=True,
+             )
+@@ -2872,8 +2873,10 @@
+                 gr.Markdown(value=info)
+             except Exception:
+                 gr.Markdown(traceback.format_exc())
+ 
+-    if config.iscolab:
++    if os.environ.get("RVC_SMOKE_TEST") == "1":
++        print("RVC WebUI smoke test: OK", flush=True)
++    elif config.iscolab:
+         app.queue(concurrency_count=511, max_size=1022).launch(share=True)
+     else:
+         launch_webui_with_port_fallback(app, config)

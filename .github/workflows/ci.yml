@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cpu:
+    name: CPU package and flake checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@527f17dd63d2d60d3e5552934bc84b9a33a14d11 # v3.22.2
+
+      # Pushes happen on main only: the token is a repository secret, which
+      # is never exposed to pull-request runs from forks. Pulls everywhere
+      # come from the flake's own nixConfig (determinate-nix accepts flake
+      # configuration by default).
+      - name: Set up Cachix binary cache
+        if: github.ref == 'refs/heads/main'
+        uses: cachix/cachix-action@ad2ddac53f961de1989924296a1f236fcfbaa4fc # v15
+        with:
+          name: ruixi-rebirth
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+
+      - name: Check repository formatting and lint
+        run: nix fmt -- --ci
+
+      - name: Evaluate every flake output
+        run: nix flake check --no-build --show-trace
+
+      - name: Build the CPU package
+        run: nix build .#cpu --print-build-logs
+
+      - name: Run network-isolated smoke and module checks
+        run: nix flake check --print-build-logs
+
+      - name: Push CPU closures to Cachix
+        if: github.ref == 'refs/heads/main'
+        run: |
+          nix build .#cpu .#cpu-with-models --no-link --print-build-logs
+          nix path-info --recursive .#cpu | cachix push ruixi-rebirth
+          nix path-info --recursive .#cpu-with-models | cachix push ruixi-rebirth
+
+  # Build the CUDA package (source patches, nvidia wheel patchelf, install
+  # checks) without hardware: its forward paths need an NVIDIA runner, but a
+  # successful build proves the CUDA-specific packaging is intact.
+  cuda:
+    name: CUDA package build
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@527f17dd63d2d60d3e5552934bc84b9a33a14d11 # v3.22.2
+
+      - name: Set up Cachix binary cache
+        if: github.ref == 'refs/heads/main'
+        uses: cachix/cachix-action@ad2ddac53f961de1989924296a1f236fcfbaa4fc # v15
+        with:
+          name: ruixi-rebirth
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+
+      - name: Build the CUDA package
+        run: nix build .#cuda --no-link --print-build-logs
+
+      - name: Push CUDA closures to Cachix
+        if: github.ref == 'refs/heads/main'
+        run: |
+          nix build .#cuda-with-models --no-link --print-build-logs
+          nix path-info --recursive .#cuda | cachix push ruixi-rebirth
+          nix path-info --recursive .#cuda-with-models | cachix push ruixi-rebirth

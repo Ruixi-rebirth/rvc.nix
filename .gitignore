@@ -1,0 +1,7 @@
+/.direnv/
+/.patchgen-tmp/
+__pycache__/
+*.py[cod]
+/.rvc/
+/result
+/result-*

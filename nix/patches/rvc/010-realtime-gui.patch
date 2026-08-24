@@ -1,0 +1,115 @@
+# Description: Keep realtime data and configuration writable, fix model selectors, handle unavailable audio devices, and support headless smoke tests.
+# Generated-by: nix/patches/generate_patches.py
+# Source-of-truth: nix/patches/rules.py
+#
+--- a/realtime_gui.py
++++ b/realtime_gui.py
+@@ -1,16 +1,18 @@
+ import os
+ import sys
+ 
+-now_dir = os.path.dirname(os.path.abspath(__file__))
++now_dir = os.environ.get("RVC_DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+ 
+ from tools.file_io import read_text
+ 
+ os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+ 
+ os.environ["OMP_NUM_THREADS"] = "4"
+ 
+-realtime_config_path = os.path.join(now_dir, "configs", "config.json")
++config_dir = os.environ.get("RVC_CONFIG_DIR", os.path.join(now_dir, "configs"))
++os.makedirs(config_dir, exist_ok=True)
++realtime_config_path = os.path.join(config_dir, "realtime.json")
+ 
+ flag_vc = False
+ 
+ 
+@@ -160,9 +162,9 @@
+                                     i18n("选择.pth文件"),
+                                     initial_folder=os.path.join(
+                                         os.getcwd(), "assets/weights"
+                                     ),
+-                                    file_types=((". pth"),),
++                                    file_types=(("RVC model", "*.pth"),),
+                                 ),
+                             ],
+                             [
+                                 sg.Input(
+@@ -171,9 +173,9 @@
+                                 ),
+                                 sg.FileBrowse(
+                                     i18n("选择.index文件"),
+                                     initial_folder=os.path.join(os.getcwd(), "logs"),
+-                                    file_types=((". index"),),
++                                    file_types=(("RVC index", "*.index"),),
+                                 ),
+                             ],
+                         ],
+                     )
+@@ -426,27 +428,30 @@
+                     if self.gui_config.sg_hostapi not in self.hostapis:
+                         self.gui_config.sg_hostapi = self.hostapis[0]
+                     self.window["sg_hostapi"].Update(values=self.hostapis)
+                     self.window["sg_hostapi"].Update(value=self.gui_config.sg_hostapi)
+-                    if (
+-                        self.gui_config.sg_input_device not in self.input_devices
+-                        and len(self.input_devices) > 0
+-                    ):
+-                        self.gui_config.sg_input_device = self.input_devices[0]
++                    if self.gui_config.sg_input_device not in self.input_devices:
++                        self.gui_config.sg_input_device = ""
+                     self.window["sg_input_device"].Update(values=self.input_devices)
+                     self.window["sg_input_device"].Update(
+                         value=self.gui_config.sg_input_device
+                     )
+                     if self.gui_config.sg_output_device not in self.output_devices:
+-                        self.gui_config.sg_output_device = self.output_devices[0]
++                        self.gui_config.sg_output_device = ""
+                     self.window["sg_output_device"].Update(values=self.output_devices)
+                     self.window["sg_output_device"].Update(
+                         value=self.gui_config.sg_output_device
+                     )
+                 if event == "start_vc" and not flag_vc:
+                     if self.set_values(values) == True:
+                         printt(i18n("CUDA可用：%s"), torch.cuda.is_available())
+-                        self.start_vc()
++                        try:
++                            self.start_vc()
++                        except sd.PortAudioError as error:
++                            self.stop_stream()
++                            printt("%s: %s", i18n("音频设备"), error)
++                            sg.popup_error(str(error), title=i18n("音频设备"))
++                            continue
+                         settings = {
+                             "pth_path": values["pth_path"],
+                             "index_path": values["index_path"],
+                             "sg_hostapi": values["sg_hostapi"],
+@@ -522,8 +527,17 @@
+                     # Other parameters do not support hot update
+                     self.stop_stream()
+ 
+         def set_values(self, values):
++            if (
++                values["sg_input_device"] not in self.input_devices
++                or values["sg_output_device"] not in self.output_devices
++            ):
++                sg.popup_error(
++                    "%s / %s" % (i18n("输入设备"), i18n("输出设备")),
++                    title=i18n("音频设备"),
++                )
++                return False
+             if len(values["pth_path"].strip()) == 0:
+                 sg.popup(i18n("请选择pth文件"))
+                 return False
+             if len(values["index_path"].strip()) == 0:
+@@ -995,5 +1009,8 @@
+                 "max_output_channels"
+             ]
+             return min(max_input_channels, max_output_channels, 2)
+ 
+-    gui = GUI()
++    if os.environ.get("RVC_SMOKE_TEST") == "1":
++        print("RVC realtime smoke test: OK", flush=True)
++    else:
++        gui = GUI()

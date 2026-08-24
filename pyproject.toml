@@ -1,0 +1,69 @@
+[project]
+name = "rvc-nix"
+version = "0.1.0"
+description = "Locked Python runtime for Retrieval-based Voice Conversion"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "altair>=4.2.0,<5",
+  "anyio>=3.6.2,<4",
+  "av>=15.1.0,<16",
+  "einops>=0.8.0,<1",
+  "faiss-cpu>=1.13.0,<2",
+  "fastapi>=0.88.0,<0.100",
+  "ffmpeg-python>=0.2.0,<1",
+  "freesimplegui>=5.1.0,<5.2",
+  "gradio>=3.14.0,<3.15",
+  "httpx>=0.23.0,<0.24",
+  "librosa>=0.10.2,<0.11",
+  "local-attention>=1.11.0,<2",
+  "markdown-it-py>=2.2.0,<3",
+  "matplotlib>=3.8.2,<4",
+  "mdit-py-plugins>=0.3.3,<0.4",
+  "networkx>=3.2.0,<4",
+  "numpy>=1.26.4,<2",
+  # Torch owns the CUDA/cuDNN dependency closure. Using the CPU ONNX provider
+  # avoids loading ONNX Runtime's cuDNN 8 ABI into Torch 2.7's cuDNN 9 process.
+  "onnxruntime>=1.24.4,<2",
+  "packaging>=24.0",
+  "praat-parselmouth>=0.4.5,<1",
+  "pydantic>=1.10.13,<2",
+  # pymss and pymss-core are vendored by the pinned RVC source. Installing the
+  # PyPI copies would duplicate those modules and adds a conflicting Torch pin.
+  "pyparsing>=3.0.9,<3.1",
+  "pyyaml>=6.0.1",
+  # Keep this manifest aligned with python/cpu/pyproject.toml;
+  # checks.pyproject-sync (nix/tests/pyproject_sync.py) fails the build on
+  # undocumented drift. `hyper-connections` is a documented CPU-only pin.
+  "scikit-learn>=1.6.0,<2",
+  "scipy>=1.13.1,<2",
+  "setuptools>=75.0,<81",
+  "sounddevice>=0.5.0,<1",
+  "soundfile>=0.13.0,<1",
+  "starlette>=0.22.0,<0.28",
+  "tensorboard>=2.19.0",
+  "torch==2.7.1",
+  "torchaudio==2.7.1",
+  "torchfcpe>=0.0.4,<0.1",
+  "tqdm>=4.67.0,<5",
+  "transformers>=4.49.0,<4.50",
+  "uvicorn>=0.20.0,<0.23",
+  "websockets>=10.4,<11",
+]
+
+[tool.uv]
+package = false
+# The flake only targets x86_64-linux with CPython; limiting the resolution
+# environments keeps the offline lock check independent of foreign-platform
+# wheel metadata.
+environments = [
+  "sys_platform == 'linux' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu118" }
+torchaudio = { index = "pytorch-cu118" }

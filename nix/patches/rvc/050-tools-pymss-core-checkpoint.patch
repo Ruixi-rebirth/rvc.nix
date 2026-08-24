@@ -1,0 +1,38 @@
+# Description: Reject unrestricted generic PyMSS loads while preserving explicitly classified legacy formats.
+# Generated-by: nix/patches/generate_patches.py
+# Source-of-truth: nix/patches/rules.py
+#
+--- a/tools/pymss_core/checkpoint.py
++++ b/tools/pymss_core/checkpoint.py
+@@ -62,13 +62,9 @@
+     try:
+         return torch.load(path, **kwargs)
+     except TypeError:
+         kwargs.pop("mmap", None)
+-        try:
+-            return torch.load(path, **kwargs)
+-        except TypeError:
+-            kwargs.pop("weights_only", None)
+-            return torch.load(path, **kwargs)
++        return torch.load(path, **kwargs)
+ 
+ 
+ def load_checkpoint(
+     path: str | Path,
+@@ -86,9 +82,15 @@
+             return _torch_load(path, map_location=map_location, weights_only=False, mmap=mmap)
+         finally:
+             _restore_modules(previous)
+     if model_type == "apollo":
+-        weights_only = False if weights_only is None else weights_only
++        return _torch_load(
++            path, map_location=map_location, weights_only=False, mmap=mmap
++        )
++    if weights_only is False:
++        raise ValueError(
++            "weights_only=False is restricted to explicitly classified legacy model types"
++        )
+     return _torch_load(path, map_location=map_location, weights_only=weights_only, mmap=mmap)
+ 
+ 
+ def load_state_dict(
