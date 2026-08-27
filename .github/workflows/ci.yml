@@ -43,18 +43,11 @@ jobs:
       - name: Evaluate every flake output
         run: nix flake check --no-build --show-trace
 
-      - name: Build the CPU package
-        run: nix build .#cpu --print-build-logs
+      - name: Build the CPU packages
+        run: nix build .#cpu .#cpu-all --no-link --print-build-logs
 
       - name: Run network-isolated smoke and module checks
         run: nix flake check --print-build-logs
-
-      - name: Push CPU closures to Cachix
-        if: github.ref == 'refs/heads/main'
-        run: |
-          nix build .#cpu .#cpu-with-models --no-link --print-build-logs
-          nix path-info --recursive .#cpu | cachix push ruixi-rebirth
-          nix path-info --recursive .#cpu-with-models | cachix push ruixi-rebirth
 
   # Build the CUDA package (source patches, nvidia wheel patchelf, install
   # checks) without hardware: its forward paths need an NVIDIA runner, but a
@@ -86,12 +79,10 @@ jobs:
           name: ruixi-rebirth
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
-      - name: Build the ${{ matrix.label }} package
-        run: nix build ".#${{ matrix.variant }}" --no-link --print-build-logs
-
-      - name: Push ${{ matrix.label }} closures to Cachix
-        if: github.ref == 'refs/heads/main'
+      - name: Build the ${{ matrix.label }} packages
         run: |
-          nix build ".#${{ matrix.variant }}-with-models" --no-link --print-build-logs
-          nix path-info --recursive ".#${{ matrix.variant }}" | cachix push ruixi-rebirth
-          nix path-info --recursive ".#${{ matrix.variant }}-with-models" | cachix push ruixi-rebirth
+          nix build \
+            ".#${{ matrix.variant }}" \
+            ".#${{ matrix.variant }}-all" \
+            --no-link \
+            --print-build-logs

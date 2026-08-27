@@ -40,12 +40,17 @@ let
         echoCancellation.enable = true;
       };
     }).config;
-
+  virtualMicOnly =
+    (evalModule {
+      virtualMic.enable = true;
+    }).config;
   virtualCommands =
     configured.services.pipewire.extraConfig.pipewire-pulse."90-rvc-virtual-mic"."pulse.cmd";
+  virtualPulseConfig = configured.services.pipewire.extraConfig.pipewire-pulse."90-rvc-virtual-mic";
   virtualRestartTriggers = configured.systemd.user.services.pipewire-pulse.restartTriggers;
   echoModules =
     configured.services.pipewire.extraConfig.pipewire."90-rvc-echo-cancellation"."context.modules";
+  echoRestartTriggers = configured.systemd.user.services.pipewire.restartTriggers;
   invalidLowPort = builtins.tryEval (
     builtins.deepSeq (evalModule { webui.port = 0; }).config.programs.rvc.webui.port true
   );
@@ -94,8 +99,11 @@ assert
       flags = [ ];
     }
   ];
-assert virtualRestartTriggers == [ (builtins.toJSON virtualCommands) ];
+assert virtualPulseConfig."pulse.properties"."pulse.default.frag" == "1024/48000";
+assert virtualRestartTriggers == [ (builtins.toJSON virtualPulseConfig) ];
 assert builtins.length echoModules == 1;
+assert echoRestartTriggers == [ (builtins.toJSON echoModules) ];
+assert virtualMicOnly.systemd.user.services.pipewire.restartTriggers == [ "[]" ];
 assert (builtins.head echoModules).name == "libpipewire-module-echo-cancel";
 assert (builtins.head echoModules).args."library.name" == "aec/libspa-aec-webrtc";
 assert (builtins.head echoModules).args."monitor.mode";

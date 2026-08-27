@@ -4,6 +4,7 @@ Used by the package installCheckPhase and the live acceptance script on the
 requested device (cpu/cuda).
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,31 @@ def main() -> None:
     expected_device = sys.argv[2]
     if expected_device not in {"cpu", "cuda"}:
         raise SystemExit("expected device must be cpu or cuda")
+
+    if len(sys.argv) == 4:
+        if sys.argv[3] != "extract-v2-40k":
+            raise SystemExit("unknown checkpoint preparation mode")
+        extracted_dir = Path(os.environ["RVC_CACHE_DIR"]) / "realtime-weights"
+        extracted_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["weight_root"] = str(extracted_dir)
+        from train.process_ckpt import extract_small_model
+
+        result = extract_small_model(
+            str(checkpoint),
+            "install-check",
+            "40k",
+            1,
+            "install check",
+            "v2",
+        )
+        checkpoint = extracted_dir / "install-check.pth"
+        if not checkpoint.is_file():
+            raise RuntimeError(f"failed to extract inference checkpoint: {result}")
+    elif len(sys.argv) != 3:
+        raise SystemExit(
+            "usage: realtime_infer_forward.py CHECKPOINT DEVICE "
+            "[extract-v2-40k]"
+        )
 
     from configs.config import infer_device, infer_dtype
 

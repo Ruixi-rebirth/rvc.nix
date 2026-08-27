@@ -27,10 +27,10 @@ Choose one command for the target machine:
 nix run github:Ruixi-rebirth/rvc.nix
 
 # CUDA 11.8 for supported NVIDIA GPUs before the RTX 50 series
-nix run github:Ruixi-rebirth/rvc.nix#cuda118-with-models
+nix run github:Ruixi-rebirth/rvc.nix#realtime-cuda118
 
 # CUDA 12.8 for NVIDIA RTX 50-series GPUs
-nix run github:Ruixi-rebirth/rvc.nix#cuda128-with-models
+nix run github:Ruixi-rebirth/rvc.nix#realtime-cuda128
 ```
 
 All three commands include HuBERT for content features and RMVPE for pitch
@@ -45,38 +45,42 @@ or Intel GPU acceleration.
 
 ```console
 # WebUI with the inference models needed for file conversion
-nix run github:Ruixi-rebirth/rvc.nix#web-with-models
+nix run github:Ruixi-rebirth/rvc.nix#web
 
 # WebUI with the complete packaged model set (larger download)
-nix run github:Ruixi-rebirth/rvc.nix#web-with-all-models
+nix run github:Ruixi-rebirth/rvc.nix#web-all
 
 # RVC CLI
-nix run github:Ruixi-rebirth/rvc.nix#cli-with-models -- --help
+nix run github:Ruixi-rebirth/rvc.nix#cli -- --help
 
 # PyMSS source-separation CLI with its packaged weights
-nix run github:Ruixi-rebirth/rvc.nix#pymss-with-models -- infer --help
+nix run github:Ruixi-rebirth/rvc.nix#pymss -- infer --help
 ```
 
-## Choose model assets
+## Models included by each command
 
-Model suffixes describe which assets are packaged. None of the variants
-provides a finished target-voice model.
+Runnable commands include the assets needed for their task; users do not need
+to choose a model bundle separately.
 
-| Output | Assets | Use |
+| Command | Packaged assets | Intended use |
 | --- | --- | --- |
-| Default and RVC `-with-models` | HuBERT, RMVPE | RVC conversion |
-| PyMSS `-with-models` | Five weights | Source separation |
-| `-with-all-models` | All packaged assets | All WebUI workflows |
-| Runtime outputs without a model suffix | None | Use existing models |
+| `realtime`, `web`, `cli` | HuBERT and RMVPE | Voice conversion |
+| `pymss` | Five PyMSS weights | Music source separation |
+| `web-all` | Every packaged model asset | All WebUI workflows |
 
-`web-with-all-models` is the all-in-one runnable command because the upstream
-WebUI exposes file conversion, training, and source separation together. It
-packages HuBERT, RMVPE, RVC v1/v2 pretrained weights, mute samples, and five
-PyMSS weights. The v1/v2 weights initialize training; training still requires
-target-voice recordings and produces the `.pth` model used for conversion.
+Add `-cuda118` or `-cuda128` to any command name to change only its execution
+backend, for example `web-cuda118` or `web-all-cuda128`.
 
-The complete command, package, and standalone model-output matrix is in the
-[usage guide](docs/usage.md).
+No command includes a finished target voice. `web-all` adds the RVC v1/v2
+pretrained weights and mute samples used by upstream training, along with the
+inference and PyMSS assets. Those pretrained weights only initialize training:
+you still provide recordings of the target voice, and training produces the
+`.pth` model used for conversion.
+
+The names above are apps for `nix run`. A NixOS installation selects one
+CPU/CUDA runtime package; `models-*` outputs exist only for advanced model
+composition. The [usage guide](docs/usage.md) lists all three output types and
+shows custom combinations.
 
 ## Choose CPU or CUDA
 

@@ -23,7 +23,7 @@ against the patched tree. From the rvc.nix repository, the normal entry point
 uses the source already locked into the Nix store:
 
     nix flake update rvc-src
-    nix run .#generate-patches
+    nix develop -c rvc-generate-patches
 
 The Python CLI remains available for maintenance outside Nix:
 

@@ -45,6 +45,9 @@ The packaging hardens the single-user, local-machine threat model:
   Face, Gradio, and ONNX Runtime telemetry default to disabled while explicit
   user environment settings are respected. Runtime network access is not
   forcibly disabled because upstream PyMSS exposes model download commands.
+  The Nix store is not a confidentiality boundary: a private voice model
+  packaged as a derivation may be readable by other local users. Keep private
+  checkpoints in the user data directory instead.
 - **RVC CUDA fail-closed.** Realtime GUI, WebUI, RVC CLI, and `rvc-doctor` in a
   CUDA package require a usable NVIDIA device that meets RVC's minimum instead
   of silently selecting CPU. PyMSS retains its upstream `--device` selection,
@@ -54,8 +57,11 @@ The packaging hardens the single-user, local-machine threat model:
 
 ## Reporting a vulnerability
 
-Use GitHub's private Security Advisory workflow (**Security → Report a
-vulnerability**) rather than a public issue. Include the affected flake
-output, host details, and a minimal reproduction. There is no bug bounty;
-reports are triaged as maintainer time allows. Please give a reasonable
-window before public disclosure.
+Private vulnerability reporting is not currently enabled for this repository.
+Do not put exploit details, secrets, or private model data in a public issue.
+Open a minimal issue asking the maintainer to arrange private follow-up, without
+including the sensitive details. In that private follow-up, include the
+affected flake output, host details, and a minimal reproduction.
+
+There is no bug bounty; reports are triaged as maintainer time allows. Please
+give a reasonable window before public disclosure.

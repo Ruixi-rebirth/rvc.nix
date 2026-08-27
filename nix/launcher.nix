@@ -73,10 +73,26 @@ let
         "$data_dir/assets/rmvpe" \
         "$data_dir/assets/weights"
 
-      for code_dir in i18n train; do
-        if [ ! -e "$data_dir/$code_dir" ] && [ ! -L "$data_dir/$code_dir" ]; then
-          ln -s "$source_dir/$code_dir" "$data_dir/$code_dir"
+      link_packaged_source() {
+        source_path="$1"
+        destination_path="$2"
+
+        if [ -L "$destination_path" ]; then
+          # Refresh links created from an older packaged source even while the
+          # old store path still exists. Preserve links to every other location
+          # as user-owned state.
+          case "$(readlink -- "$destination_path")" in
+            /nix/store/*-rvc-source-*/share/rvc/*)
+              ln -sfn -- "$source_path" "$destination_path"
+              ;;
+          esac
+        elif [ ! -e "$destination_path" ]; then
+          ln -s -- "$source_path" "$destination_path"
         fi
+      }
+
+      for code_dir in i18n train; do
+        link_packaged_source "$source_dir/$code_dir" "$data_dir/$code_dir"
       done
 
       # A non-matching glob must expand to nothing: without nullglob the loop
@@ -84,10 +100,9 @@ let
       shopt -s nullglob
       for config_file in "$source_dir"/assets/pymss_weights/*.yaml; do
         config_name="$(basename "$config_file")"
-        if [ ! -e "$data_dir/assets/pymss_weights/$config_name" ] \
-          && [ ! -L "$data_dir/assets/pymss_weights/$config_name" ]; then
-          ln -s "$config_file" "$data_dir/assets/pymss_weights/$config_name"
-        fi
+        link_packaged_source \
+          "$config_file" \
+          "$data_dir/assets/pymss_weights/$config_name"
       done
 
       ${lib.optionalString (models != null) ''
@@ -104,7 +119,22 @@ let
             relative_path="''${model_file#"$model_root"/}"
             destination="$destination_root/$relative_path"
             mkdir -p "$(dirname "$destination")"
-            if [ ! -e "$destination" ] && [ ! -L "$destination" ]; then
+            if [ -L "$destination" ]; then
+              existing_target="$(readlink -- "$destination")"
+              case "$existing_target" in
+                /nix/store/*-rvc-*-models*/*)
+                  # Refresh links produced by an older built-in model set.
+                  ln -sfn -- "$model_file" "$destination"
+                  ;;
+                /nix/store/*)
+                  # A custom model package may have any derivation name. Only
+                  # replace its old link after GC has made it unusable.
+                  if [ ! -e "$destination" ]; then
+                    ln -sfn -- "$model_file" "$destination"
+                  fi
+                  ;;
+              esac
+            elif [ ! -e "$destination" ]; then
               ln -s "$model_file" "$destination"
             fi
           done < <(find -L "$model_root" -type f -print0)

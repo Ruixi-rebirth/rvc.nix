@@ -1,203 +1,237 @@
 # rvc.nix 使用手册
 
-[English](usage.md) | [简体中文](usage.zh-CN.md) | [返回项目首页](../README.zh-CN.md)
+[English](usage.md) | [简体中文](usage.zh-CN.md) |
+[返回项目首页](../README.zh-CN.md)
 
-本手册说明该运行哪个命令、命令包含哪些模型，以及 RVC 把用户文件放在哪里。
-命令中的 `.` 表示当前仓库；不下载仓库时，将它换成
+本手册说明如何运行和安装 RVC、每个输出包含哪些模型，以及用户数据存放在哪里。
+示例中的 `.` 表示当前仓库；没有克隆仓库时，将它换成
 `github:Ruixi-rebirth/rvc.nix`。
 
-## 先选要运行的程序
+## 先理解三种输出
+
+rvc.nix 按用途公开三类输出：
+
+| 输出 | 使用方式 | 适合谁 |
+| --- | --- | --- |
+| `apps` | `nix run` | 直接启动 Realtime GUI、WebUI 或 CLI |
+| 运行软件包 | `nix build`、NixOS 模块 | 安装完整 RVC 环境 |
+| `models-*` | 软件包的 `models` 参数 | 组合可复现的模型资源 |
+
+普通用户只需使用应用或 6 个运行软件包。`models-*` 只有模型文件，没有 RVC
+命令，不能直接赋给 `programs.rvc.package`。
+
+## 直接运行
+
+不带 CUDA 后缀的应用使用 CPU；在名称后添加 `-cuda118` 或 `-cuda128` 即可选择
+NVIDIA 后端。每个应用都会自动带上完成该任务所需的模型资源。
 
 启动 Realtime GUI：
 
 ```console
-# CPU、AMD GPU 或 Intel GPU
+# CPU；AMD 或 Intel 显卡也选择此项
 nix run .
+nix run .#realtime
 
 # RTX 50 系以前的 NVIDIA GPU
-nix run .#cuda118-with-models
+nix run .#realtime-cuda118
 
 # RTX 50 系列 NVIDIA GPU
-nix run .#cuda128-with-models
+nix run .#realtime-cuda128
 ```
 
 启动 WebUI：
 
 ```console
-# 使用 HuBERT 和 RMVPE 进行文件变声
-nix run .#web-with-models
-
-# 文件变声、训练和音乐源分离
-nix run .#web-with-all-models
-
-# WebUI 不附带软件包提供的模型
+# 文件变声
 nix run .#web
+nix run .#web-cuda118
+nix run .#web-cuda128
+
+# 文件变声、训练和 PyMSS；下载量更大
+nix run .#web-all
+nix run .#web-all-cuda118
+nix run .#web-all-cuda128
 ```
 
 运行 RVC CLI：
 
 ```console
-nix run .#cli-with-models -- --help
 nix run .#cli -- --help
+nix run .#cli-cuda118 -- --help
+nix run .#cli-cuda128 -- --help
 ```
 
 运行 PyMSS CLI：
 
 ```console
-nix run .#pymss-with-models -- infer --help
 nix run .#pymss -- infer --help
+nix run .#pymss-cuda118 -- infer --help
+nix run .#pymss-cuda128 -- infer --help
 ```
 
-运行上游 Python 脚本：
+`nix run .` 和 `nix run .#realtime` 启动同一个 CPU Realtime GUI。`--` 后面的
+参数会传给 RVC 或 PyMSS；示例中的 `--help` 只显示帮助。
 
-```console
-nix run .#python -- train/train.py --help
-nix run .#cuda118-python -- train/train.py --help
-nix run .#cuda128-python -- train/train.py --help
-```
+## 构建和安装软件包
 
-每组命令的第一条使用 CPU。将入口名前加上 `cuda118-` 或 `cuda128-` 可以使用
-对应 CUDA 版本。`nix run .` 是默认的 CPU 命令，等同于
-`nix run .#with-models`。
+运行软件包按两个维度命名：后端决定 CPU 或 CUDA，`-all` 决定是否加入训练和
+PyMSS 资源。
 
-`--` 后面的参数会传给 RVC、PyMSS 或 Python 脚本。示例中的 `--help` 只显示参数，
-不会处理音频或开始训练。
+| 后端 | 推理与实时变声 | 加入训练和 PyMSS 资源 |
+| --- | --- | --- |
+| CPU、AMD GPU 或 Intel GPU | `cpu`（默认） | `cpu-all` |
+| RTX 50 系以前的 NVIDIA GPU | `cuda118` | `cuda118-all` |
+| RTX 50 系列 | `cuda128` | `cuda128-all` |
 
-下面列出完整的模型版本和 CUDA 版本。
-
-### Realtime GUI
-
-```console
-nix run .#realtime
-nix run .#with-models
-nix run .#cuda118
-nix run .#cuda118-with-models
-nix run .#cuda128
-nix run .#cuda128-with-models
-```
-
-### WebUI
-
-```console
-nix run .#web
-nix run .#web-with-models
-nix run .#web-with-all-models
-nix run .#cuda118-web
-nix run .#cuda118-web-with-models
-nix run .#cuda118-web-with-all-models
-nix run .#cuda128-web
-nix run .#cuda128-web-with-models
-nix run .#cuda128-web-with-all-models
-```
-
-### RVC CLI
-
-```console
-nix run .#cli
-nix run .#cli-with-models -- --help
-nix run .#cuda118-cli
-nix run .#cuda118-cli-with-models -- --help
-nix run .#cuda128-cli
-nix run .#cuda128-cli-with-models -- --help
-```
-
-### PyMSS CLI
-
-```console
-nix run .#pymss
-nix run .#pymss-with-models -- infer --help
-nix run .#cuda118-pymss
-nix run .#cuda118-pymss-with-models -- infer --help
-nix run .#cuda128-pymss
-nix run .#cuda128-pymss-with-models -- infer --help
-```
-
-### Python 和维护命令
-
-```console
-nix run .#python -- train/train.py --help
-nix run .#cuda118-python -- train/train.py --help
-nix run .#cuda128-python -- train/train.py --help
-nix run .#generate-patches
-```
-
-`rvc-python` 会从 Nix store 中的软件包查找 `train/train.py` 等上游脚本，不需要
-先下载 rvc.nix 或上游 RVC 仓库。`generate-patches` 供仓库维护者重新生成补丁，
-不是运行 RVC 的命令。
-
-## 模型怎么分工
-
-RVC 使用三类模型文件：
-
-- HuBERT 从输入语音中提取内容特征。
-- RMVPE 提取音高。Realtime GUI、WebUI 文件变声和 RVC CLI 默认使用它。
-- 用户自己的 `.pth` 语音模型决定转换后的音色，配套的 `.index` 文件可选。
-
-RVC 入口名中的 `-with-models` 表示包含 HuBERT 和 RMVPE。
-`-with-all-models` 还包含 WebUI 训练用的 RVC v1/v2 预训练权重和静音样本，以及
-5 个 PyMSS 权重。PyMSS 入口中的 `-with-models` 只表示包含这 5 个 PyMSS 权重。
-
-不带模型的版本不会自动下载 HuBERT 或 RMVPE，适合已经自行准备这些文件，或只需
-打开界面、查看 `--help` 和检查环境的情况。没有 HuBERT 时不能进行 RVC 变声，
-训练也不能提取特征。没有 RMVPE 时，Realtime GUI 和 WebUI 可改用 `pm` 或
-`fcpe`，RVC CLI 可改用 `pm`；HuBERT 仍然是必需的。普通用户应选择
-`-with-models`。
-
-## 构建软件包
-
-`nix build` 只构建或下载软件包，不启动程序：
+例如：
 
 ```console
 nix build .#cpu
-nix build .#cpu-with-models
-nix build .#cpu-with-all-models
+nix build .#cpu-all
 nix build .#cuda118
-nix build .#cuda118-with-models
-nix build .#cuda118-with-all-models
+nix build .#cuda118-all
 nix build .#cuda128
-nix build .#cuda128-with-models
-nix build .#cuda128-with-all-models
+nix build .#cuda128-all
 ```
 
-`nix build .` 和 `.#default` 都是 `.#cpu-with-models` 的别名。
+`nix build .` 和 `nix build .#default` 都等价于 `nix build .#cpu`。每个运行
+软件包都包含以下命令：
 
-以下输出只包含模型，不包含 RVC 程序：
+```text
+rvc-realtime  Realtime GUI
+rvc-web       WebUI
+rvc-cli       RVC CLI
+pymss         PyMSS CLI
+rvc-doctor    运行环境诊断
+rvc-python    带完整依赖的 Python
+```
+
+因此 NixOS 只需选择一个 `programs.rvc.package`；命令行工具和可选 WebUI 服务
+都会使用同一个软件包。高级用户也可以运行固定上游中的其他脚本：
 
 ```console
-nix build .#models-inference
-nix build .#models-pretrained-v1
-nix build .#models-pretrained-v2
-nix build .#models-mute
-nix build .#models-training
-nix build .#models-pymss
-nix build .#models-all
+nix shell .#cpu -c rvc-python train/train.py --help
 ```
 
-`models-all` 包含 HuBERT、RMVPE、v1/v2 预训练权重、静音样本和 5 个 PyMSS 权重，
-主要供 overlay 和自定义软件包组合使用。
+### 使用 overlay
 
-## 用户文件和数据目录
+需要从 nixpkgs 命名空间引用软件包时，可以启用默认 overlay：
 
-用户文件默认放在：
+```nix
+{
+  nixpkgs.overlays = [ rvc-nix.overlays.default ];
+  environment.systemPackages = [ pkgs.rvc-cuda118 ];
+}
+```
+
+overlay 中的 `pkgs.rvc` 等于 CPU 推理软件包。其余运行软件包使用
+`pkgs.rvc-cpu`、`pkgs.rvc-cuda118`、`pkgs.rvc-cuda128` 及对应的 `-all` 名称；
+模型输出使用 `pkgs.rvc-models-*`。这些软件包与 flake 的同名输出内容一致，并且
+可以继续使用 `.override { models = ...; }`。
+
+## 模型资源
+
+RVC 变声涉及三类模型：
+
+- HuBERT 从输入语音中提取内容特征。
+- RMVPE 提取音高，Realtime GUI、WebUI 文件变声和 RVC CLI 默认使用它。
+- 用户自己的 `.pth` 目标音色模型决定转换后的声音，配套 `.index` 文件可选。
+
+`realtime`、`web` 和 `cli` 应用包含 HuBERT 与 RMVPE；`pymss` 应用包含 5 个
+音源分离权重。`web-all` 额外包含训练使用的 RVC v1/v2 预训练权重、静音样本和
+PyMSS 权重。训练预权重只用于初始化训练，不是已经完成的目标音色。
+
+独立模型输出如下：
+
+| 输出 | 内容 |
+| --- | --- |
+| `models-inference` | HuBERT 和 RMVPE |
+| `models-pretrained-v1` | RVC v1 训练预权重 |
+| `models-pretrained-v2` | RVC v2 训练预权重 |
+| `models-mute` | 训练使用的静音样本 |
+| `models-training` | v1/v2 训练预权重和静音样本 |
+| `models-pymss` | 5 个 PyMSS 权重 |
+| `models-all` | 上述全部资源 |
+
+例如，`nix build .#models-inference` 只构建或下载推理资源。
+
+### 组合模型输出
+
+软件包的 `models` 参数接受一个模型包或模型包列表。列表会合并目录并继承各模型包
+声明的构建检查。例如，下面的组合包含变声和 PyMSS 资源，但不包含训练资源：
+
+```nix
+let
+  rvcPkgs = rvc-nix.packages.${pkgs.stdenv.hostPlatform.system};
+in
+{
+  programs.rvc.package = rvcPkgs.cuda118.override {
+    models = [
+      rvcPkgs.models-inference
+      rvcPkgs.models-pymss
+    ];
+  };
+}
+```
+
+`models` 会替换软件包原有的整组模型，不是追加。以下两种写法等价：
+
+```nix
+package = rvcPkgs.cuda118-all;
+
+package = rvcPkgs.cuda118.override {
+  models = [ rvcPkgs.models-all ];
+};
+```
+
+`models = [ ];` 与 `models = null;` 都表示不捆绑任何模型。此时程序仍在，但用户
+必须自行提供 HuBERT 和 RMVPE，才能进行常规变声。
+
+### 使用自己的目标音色
+
+经常更新或不希望公开的 `.pth` 和 `.index` 应直接放入用户数据目录：
 
 ```text
-$XDG_DATA_HOME/rvc/assets/weights/   .pth 语音模型
-$XDG_DATA_HOME/rvc/assets/indices/   外部 .index 索引
+$XDG_DATA_HOME/rvc/assets/weights/my-voice.pth
+$XDG_DATA_HOME/rvc/assets/indices/my-voice.index
 ```
 
-使用不带模型的软件包时，还需自行提供：
+这种方式无需重建软件包，也不会把私人模型复制到本机其他用户可能读取的 Nix
+store。
 
-```text
-$XDG_DATA_HOME/rvc/assets/hubert_base/   HuBERT 模型目录
-$XDG_DATA_HOME/rvc/assets/rmvpe/rmvpe.pt RMVPE 模型
+只有需要固定并共享的模型才适合打包成 derivation。例如，可以把 flake 源中的
+两个模型文件加入软件包：
+
+```nix
+let
+  rvcPkgs = rvc-nix.packages.${pkgs.stdenv.hostPlatform.system};
+  myVoiceModels = pkgs.runCommand "rvc-my-voice-models" {
+    passthru.modelChecks = [ ];
+  } ''
+    install -Dm444 ${./models/my-voice.pth} \
+      "$out/assets/weights/my-voice.pth"
+    install -Dm444 ${./models/my-voice.index} \
+      "$out/assets/indices/my-voice.index"
+  '';
+in
+{
+  programs.rvc.package = rvcPkgs.cuda118.override {
+    models = [
+      rvcPkgs.models-inference
+      myVoiceModels
+    ];
+  };
+}
 ```
 
-`$XDG_DATA_HOME` 默认是 `~/.local/share`。WebUI 训练生成的可用于推理的
-`added_*.index` 位于 `$XDG_DATA_HOME/rvc/logs/<实验名>/`，同时会在
-`assets/indices` 中创建入口。自动匹配索引时会搜索这两个位置。推理使用
-`added_*.index`，不要使用中间产物 `trained_*.index`。
+Git flake 只能读取属于 flake 源的本地文件，例如已被 Git 跟踪的文件。自定义模型
+derivation 必须提供 `passthru.modelChecks`；没有额外软件包检查时使用 `[ ]`。没有
+配套索引时删去第二条 `install` 即可。必须保留 `models-inference`，因为目标音色
+不能替代 HuBERT 和 RMVPE。
 
-程序还会使用以下目录：
+## 用户数据目录
+
+`$XDG_DATA_HOME` 默认是 `~/.local/share`。程序使用以下目录：
 
 ```text
 $XDG_DATA_HOME/rvc/       模型、索引、日志和训练数据
@@ -205,12 +239,24 @@ $XDG_CONFIG_HOME/rvc/     Realtime GUI 设置
 $XDG_CACHE_HOME/rvc/      临时音频、上传文件和库缓存
 ```
 
-可使用 `RVC_DATA_DIR`、`RVC_CONFIG_DIR` 和 `RVC_CACHE_DIR` 修改这些位置。启动器
-把软件包中的模型链接到数据目录时，会保留已有的同名文件。
+WebUI 训练生成的可用于推理的 `added_*.index` 位于
+`$XDG_DATA_HOME/rvc/logs/<实验名>/`，同时会在 `assets/indices` 中创建入口。
+自动匹配会搜索两个位置。推理应使用 `added_*.index`，不要使用中间产物
+`trained_*.index`。
+
+使用无模型软件包时，还需自行提供：
+
+```text
+$XDG_DATA_HOME/rvc/assets/hubert_base/   HuBERT 模型目录
+$XDG_DATA_HOME/rvc/assets/rmvpe/rmvpe.pt RMVPE 模型
+```
+
+可通过 `RVC_DATA_DIR`、`RVC_CONFIG_DIR` 和 `RVC_CACHE_DIR` 修改三个根目录。启动器
+只链接数据目录中尚不存在的打包资源，不会覆盖用户已有的同名文件。
 
 ## 检查运行环境
 
-先构建要检查的软件包，再运行其中的 `rvc-doctor`：
+先构建所选软件包，再运行其中的 `rvc-doctor`：
 
 ```console
 nix build .#cpu
@@ -223,10 +269,10 @@ nix build .#cuda128
 ./result/bin/rvc-doctor
 ```
 
-`rvc-doctor` 检查 Torch、所选设备、核心二进制扩展和 ONNX Runtime。CUDA 软件包
-还会检查 cuDNN，并要求可用的 NVIDIA GPU 至少具有 4 GiB 显存和 CUDA 计算能力
-5.3；不满足时不会回退到 CPU。CUDA 计算能力表示 GPU 的硬件架构，不是 CUDA
-Toolkit 或驱动的版本号。
+`rvc-doctor` 检查 Torch、RVC 选择的设备、核心二进制扩展和 ONNX Runtime。CUDA
+软件包还会检查 CUDA kernel 与 cuDNN，并要求显卡至少具有 4 GiB 显存和 CUDA
+计算能力 5.3；不满足要求时不会回退到 CPU。CUDA 计算能力描述 GPU 硬件架构，
+不是 CUDA Toolkit 或驱动版本。
 
 NixOS 默认从 `/run/opengl-driver/lib` 加载 NVIDIA 驱动库。其他 Linux 发行版需要
 将 `RVC_DRIVER_LIBRARY_PATH` 指向包含 `libcuda.so.1` 的目录。

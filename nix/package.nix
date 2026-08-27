@@ -25,14 +25,36 @@ let
     "hubert-rmvpe-forward"
     "realtime-synth-forward"
   ];
-  modelSetName = if models == null then "<none>" else models.name or "<unnamed>";
-  modelChecks =
+  modelPackages =
     if models == null then
       [ ]
-    else if models ? modelChecks then
-      models.modelChecks
+    else if lib.isList models then
+      models
     else
-      throw "RVC model set ${modelSetName} must define modelChecks";
+      [ models ];
+  getModelChecks =
+    model:
+    let
+      name = model.name or "<unnamed>";
+    in
+    if model ? modelChecks then
+      model.modelChecks
+    else
+      throw "RVC model package ${name} must define modelChecks";
+  combinedModelChecks = lib.unique (lib.concatMap getModelChecks modelPackages);
+  resolvedModels =
+    if modelPackages == [ ] then
+      null
+    else if lib.length modelPackages == 1 then
+      lib.head modelPackages
+    else
+      pkgs.symlinkJoin {
+        name = "rvc-combined-models";
+        paths = modelPackages;
+        passthru.modelChecks = combinedModelChecks;
+      };
+  modelPackageName = if resolvedModels == null then "<none>" else resolvedModels.name or "<unnamed>";
+  modelChecks = if resolvedModels == null then [ ] else getModelChecks resolvedModels;
   unknownModelChecks = lib.subtractLists supportedModelChecks modelChecks;
   workspaceRoot =
     {
@@ -42,7 +64,7 @@ let
     }
     .${acceleration};
   workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
-  modelSuffix = lib.optionalString (models != null) "-with-${models.name}";
+  modelSuffix = lib.optionalString (resolvedModels != null) "-with-${resolvedModels.name}";
   python = pkgs.python312;
 
   pyprojectOverlay = workspace.mkPyprojectOverlay {
@@ -133,8 +155,8 @@ let
         mkdir -p \
           "$model_test_dir/assets" \
           "$model_test_dir/cache/numba"
-        ln -s ${models}/assets/hubert_base "$model_test_dir/assets/hubert_base"
-        ln -s ${models}/assets/rmvpe "$model_test_dir/assets/rmvpe"
+        ln -s ${resolvedModels}/assets/hubert_base "$model_test_dir/assets/hubert_base"
+        ln -s ${resolvedModels}/assets/rmvpe "$model_test_dir/assets/rmvpe"
 
         HF_HUB_OFFLINE=1 \
           NUMBA_CACHE_DIR="$model_test_dir/cache/numba" \
@@ -150,18 +172,26 @@ let
       ${lib.optionalString (lib.elem "realtime-synth-forward" modelChecks) ''
 
         model_test_dir="$TMPDIR/realtime-model-forward"
-        mkdir -p "$model_test_dir/assets/rmvpe" "$model_test_dir/cache/numba"
-        ln -s ${models}/assets/rmvpe/rmvpe.pt "$model_test_dir/assets/rmvpe/rmvpe.pt"
+        mkdir -p \
+          "$model_test_dir/assets" \
+          "$model_test_dir/cache/numba"
+        ln -s ${resolvedModels}/assets/hubert_base "$model_test_dir/assets/hubert_base"
+        mkdir -p "$model_test_dir/assets/rmvpe"
+        ln -s ${resolvedModels}/assets/rmvpe/rmvpe.pt "$model_test_dir/assets/rmvpe/rmvpe.pt"
+        ln -s "$out/share/rvc/i18n" "$model_test_dir/i18n"
 
-        HF_HUB_OFFLINE=1 \
-          NUMBA_CACHE_DIR="$model_test_dir/cache/numba" \
-          PYTHONDONTWRITEBYTECODE=1 \
-          PYTHONPATH="$out/share/rvc" \
-          RVC_CACHE_DIR="$model_test_dir/cache" \
-          RVC_DATA_DIR="$model_test_dir" \
-          TRANSFORMERS_OFFLINE=1 \
-          ${pythonEnv}/bin/python -P ${./tests/realtime_infer_forward.py} \
-            "${models}/assets/pretrained_v2/f0G40k.pth" cpu
+        (
+          cd "$model_test_dir"
+          HF_HUB_OFFLINE=1 \
+            NUMBA_CACHE_DIR="$model_test_dir/cache/numba" \
+            PYTHONDONTWRITEBYTECODE=1 \
+            PYTHONPATH="$out/share/rvc" \
+            RVC_CACHE_DIR="$model_test_dir/cache" \
+            RVC_DATA_DIR="$model_test_dir" \
+            TRANSFORMERS_OFFLINE=1 \
+            ${pythonEnv}/bin/python -P ${./tests/realtime_infer_forward.py} \
+              "${resolvedModels}/assets/pretrained_v2/f0G40k.pth" cpu extract-v2-40k
+        )
       ''}
 
       ${python.interpreter} ${./tests/training_subprocess_security.py} \
@@ -173,27 +203,27 @@ let
     inherit
       acceleration
       lib
-      models
       pkgs
       pythonEnv
       rvcSource
       ;
+    models = resolvedModels;
   };
 in
+assert lib.assertMsg (lib.all lib.isDerivation modelPackages)
+  "RVC models must be a model package or a list of model packages";
 assert lib.assertMsg (lib.isList modelChecks)
-  "RVC model set ${modelSetName}: modelChecks must be a list";
+  "RVC model package ${modelPackageName}: modelChecks must be a list";
 assert lib.assertMsg (lib.all builtins.isString modelChecks)
-  "RVC model set ${modelSetName}: modelChecks entries must be strings";
+  "RVC model package ${modelPackageName}: modelChecks entries must be strings";
 assert lib.assertMsg (unknownModelChecks == [ ])
-  "RVC model set ${modelSetName}: unsupported model checks: ${lib.concatStringsSep ", " unknownModelChecks}";
+  "RVC model package ${modelPackageName}: unsupported model checks: ${lib.concatStringsSep ", " unknownModelChecks}";
 pkgs.symlinkJoin {
   name = "rvc-${acceleration}${modelSuffix}";
   paths = launcherParts.commands ++ [ launcherParts.desktopItem ];
   passthru = {
-    inherit
-      acceleration
-      models
-      ;
+    inherit acceleration;
+    models = resolvedModels;
   };
   meta = {
     description = "Retrieval-based Voice Conversion (${acceleration}) packaged with uv2nix";

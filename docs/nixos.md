@@ -3,21 +3,23 @@
 [English](nixos.md) | [简体中文](nixos.zh-CN.md) |
 [Project home](../README.md)
 
-This guide describes the rvc.nix NixOS module, WebUI user service, and PipeWire
-virtual microphone.
+This guide explains how to install RVC through the NixOS module, start a local
+WebUI service, and create a PipeWire virtual microphone for voice applications.
 
-## Configure the module
+## Add the module
 
-First add this repository as a flake input:
+First make rvc.nix follow the host's nixpkgs input:
 
 ```nix
 {
-  inputs.rvc-nix.url = "github:Ruixi-rebirth/rvc.nix";
+  inputs.rvc-nix = {
+    url = "github:Ruixi-rebirth/rvc.nix";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
 }
 ```
 
-Then add the module and its configuration to the target host's `modules` list
-inside `nixosSystem`:
+Then add the module and configuration to the target host's `modules` list:
 
 ```nix
 modules = [
@@ -25,137 +27,59 @@ modules = [
   {
     programs.rvc = {
       enable = true;
-      package = rvc-nix.packages.x86_64-linux.cuda118-with-models;
-      virtualMic.enable = true;
+      package = rvc-nix.packages.x86_64-linux.cuda118;
+      chinese.enable = true;
     };
   }
 ];
 ```
 
-The example selects CUDA 11.8. Change `package` for the target machine:
+`nixosModules.default` and `nixosModules.rvc` refer to the same module. The
+first is the conventional flake entry, while the second is easier to identify.
 
-| Hardware | `programs.rvc.package` |
-| --- | --- |
-| CPU, AMD GPU, or Intel GPU | `rvc-nix.packages.x86_64-linux.cpu-with-models` |
-| Pre-RTX 50 NVIDIA | `rvc-nix.packages.x86_64-linux.cuda118-with-models` |
-| RTX 50 series | `rvc-nix.packages.x86_64-linux.cuda128-with-models` |
+## Choose one package
 
-`programs.rvc.enable = true` always installs the selected RVC package. The
-default is the CPU package with HuBERT and RMVPE. Select a CUDA package
-explicitly through `programs.rvc.package`. The module does not supply a target
-voice `.pth` model; place one in the user data directory as described in the
-[usage guide](usage.md).
+Every name below is under `rvc-nix.packages.x86_64-linux`. First choose a row
+for the hardware. Use the third column only when training assets or PyMSS
+weights are needed.
+
+| Hardware | Inference and realtime | Add training and PyMSS assets |
+| --- | --- | --- |
+| CPU, AMD GPU, or Intel GPU | `cpu` (default) | `cpu-all` |
+| NVIDIA GPU before RTX 50 | `cuda118` | `cuda118-all` |
+| NVIDIA RTX 50 series | `cuda128` | `cuda128-all` |
+
+This is the module's only package selection. The selected package is installed
+system-wide; when the WebUI service is enabled, it starts `rvc-web` from the
+same package.
+
+`cpu`, `cuda118`, and `cuda128` already include HuBERT and RMVPE for file
+conversion and Realtime GUI. Their `-all` variants add RVC v1/v2 training
+weights, mute samples, and five PyMSS weights. Neither kind supplies a user's
+target voice `.pth`.
+
+The `models-*` outputs contain model files but no RVC commands, so they are not
+valid values for `programs.rvc.package`. See the [usage guide](usage.md) for
+model lists and custom target voices.
 
 ## Module options
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `programs.rvc.enable` | `false` | Install `programs.rvc.package` |
-| `programs.rvc.package` | CPU + HuBERT/RMVPE | Select a CPU or CUDA package |
+| `programs.rvc.enable` | `false` | Install RVC |
+| `programs.rvc.package` | `packages.cpu` | Shared RVC and WebUI package |
 | `programs.rvc.chinese.enable` | `false` | Use Simplified Chinese interfaces |
 | `programs.rvc.webui.enable` | `false` | Start WebUI after graphical login |
 | `programs.rvc.webui.host` | `127.0.0.1` | WebUI bind address |
 | `programs.rvc.webui.port` | `7865` | WebUI starting port |
 | `programs.rvc.virtualMic.enable` | `false` | Create virtual audio devices |
 
-`programs.rvc.virtualMic.echoCancellation.enable` also defaults to `false`. It
-adds a WebRTC echo-cancelled input for physical speaker use.
+Installing RVC alone does not change audio services. PipeWire, WirePlumber,
+ALSA, PulseAudio compatibility, and rtkit are enabled only when
+`virtualMic.enable` is true.
 
-PipeWire, WirePlumber, ALSA, PulseAudio compatibility, and rtkit are enabled
-only when `virtualMic.enable` is true. Installing RVC alone does not change the
-existing audio services.
-
-## Virtual microphone signal path
-
-The module creates two devices:
-
-- `RVC-Output`: a virtual output where Realtime GUI writes converted audio.
-- `RVC-Microphone`: the monitor source of `RVC-Output`, read by voice apps as a
-  microphone.
-
-The full path is:
-
-```text
-PipeWire default input -> Realtime GUI -> RVC-Output
-                                            |
-                                            +-> RVC-Microphone -> voice app
-```
-
-The module does not choose a physical microphone or change system defaults.
-The `pipewire` input in Realtime GUI follows PipeWire's current default source,
-so select the physical microphone in the desktop audio settings.
-
-## Realtime GUI device settings
-
-After enabling the virtual microphone, start Realtime GUI:
-
-```console
-rvc-realtime
-```
-
-Choose these settings in Realtime GUI:
-
-| Setting | Selection |
-| --- | --- |
-| Device type | `ALSA` |
-| Input | `pipewire` |
-| Output | `RVC-Output` |
-
-Then choose these settings in Discord, a game, or streaming software:
-
-| Setting | Selection |
-| --- | --- |
-| Input (microphone) | `RVC-Microphone` |
-| Output (speaker) | real headphones or speakers |
-
-The two applications use different devices by design:
-
-- Realtime GUI reads the real microphone and writes to `RVC-Output`.
-- The voice application reads converted audio from `RVC-Microphone`.
-- The voice application's playback output remains the real headphones or
-  speakers.
-
-`RVC-Microphone` contains only audio written by RVC. It stays silent when
-Realtime GUI is stopped or produces no output. PipeWire negotiates sample rate,
-channel count, and channel mapping. The module does not force an audio format
-or play converted audio back to the local user.
-
-## Use speakers without acoustic feedback
-
-When a physical microphone picks up speaker output, that audio can enter RVC
-again and create an echo or feedback loop. The Realtime GUI input/output noise
-reduction switches are not acoustic echo cancellation. Headphones remain the
-lowest-latency and most reliable solution.
-
-To use physical speakers, enable PipeWire's WebRTC echo canceller:
-
-```nix
-programs.rvc.virtualMic = {
-  enable = true;
-  echoCancellation.enable = true;
-};
-```
-
-This adds `RVC-Echo-Cancelled-Input`. It correlates the current PipeWire default
-microphone with the monitor of the current default output, so no physical ALSA
-device name is hard-coded. Choose the physical microphone and speakers as the
-PipeWire defaults, then use one of these RVC configurations:
-
-| Purpose | Realtime GUI input | Realtime GUI output |
-| --- | --- | --- |
-| Voice application | `RVC-Echo-Cancelled-Input` | `RVC-Output` |
-| Local speaker test | `RVC-Echo-Cancelled-Input` | `pipewire` |
-
-For a voice application, keep its microphone set to `RVC-Microphone` and its
-playback output set to the physical speakers. For a local speaker test, the
-generic `pipewire` output plays the converted voice locally but does not feed
-`RVC-Microphone`.
-
-Echo cancellation only removes audio observed on the default output monitor.
-Applications routed to another sink are outside that reference path. AEC also
-adds processing and cannot fully compensate for every room, volume, microphone,
-or speaker placement, which is why it is optional rather than enabled by
-default.
+`programs.rvc.virtualMic.echoCancellation.enable` also defaults to `false` and
+creates the optional echo-cancelled input described below.
 
 ## WebUI user service
 
@@ -169,6 +93,10 @@ programs.rvc.webui = {
 };
 ```
 
+If `programs.rvc.package` is `cuda118`, the service uses CUDA 11.8 and the
+inference assets. With `cuda118-all`, the same service can also use the
+packaged training and PyMSS assets.
+
 Inspect its status and logs with:
 
 ```console
@@ -176,31 +104,140 @@ systemctl --user status rvc-webui.service
 journalctl --user -u rvc-webui.service -f
 ```
 
-If the starting port is occupied, upstream WebUI tries the next available port.
-The module does not open the firewall. WebUI has filesystem and training
-controls and is only suitable for a trusted local user. Reverse-proxy
+If the starting port is occupied, upstream WebUI tries the next available
+port. The module does not open the firewall. WebUI has filesystem and training
+controls and is suitable only for a trusted local user. Reverse-proxy
 authentication does not make it safe for untrusted users or the public
-Internet. See [SECURITY.md](../SECURITY.md) for the full boundary.
+Internet. See [Security](../SECURITY.md) for the complete boundary.
+
+## Create a virtual microphone
+
+Enable the PipeWire integration:
+
+```nix
+programs.rvc.virtualMic.enable = true;
+```
+
+The module creates two devices:
+
+- `RVC-Output`: a virtual output where Realtime GUI writes converted audio.
+- `RVC-Microphone`: the monitor source of `RVC-Output`, read by voice apps as a
+  microphone.
+
+The signal path is:
+
+```text
+PipeWire default input -> Realtime GUI -> RVC-Output
+                                            |
+                                            +-> RVC-Microphone -> voice app
+```
+
+The module does not choose a physical microphone or change system defaults.
+The `pipewire` input in Realtime GUI follows PipeWire's current default source,
+so first select the physical microphone in the desktop audio settings.
+
+## Realtime GUI device selection
+
+Start Realtime GUI:
+
+```console
+rvc-realtime
+```
+
+Choose these settings in Realtime GUI:
+
+| Setting | Selection |
+| --- | --- |
+| Device type | `ALSA` |
+| Input | `pipewire` |
+| Output | `RVC-Output` |
+
+Do not select hardware endpoints such as `PCH`, `HDA`, or `HDMI` directly.
+They may already be owned by PipeWire or may not support a duplex stream. `OSS`
+also has no selectable input or output when no OSS device is available. The
+stable PipeWire/ALSA endpoints above avoid these device-open failures.
+
+Then choose these settings in Discord, a game, or streaming software:
+
+| Setting | Selection |
+| --- | --- |
+| Input (microphone) | `RVC-Microphone` |
+| Output (speaker) | real headphones or speakers |
+
+The two applications have different roles. Realtime GUI reads the physical
+microphone and writes to `RVC-Output`; the voice application reads converted
+audio from `RVC-Microphone` but still sends playback to real headphones or
+speakers.
+
+`RVC-Microphone` contains only audio written by RVC. It is silent while
+Realtime GUI is stopped or produces no output. PipeWire negotiates sample rate,
+channel count, and channel mapping. The module does not force an audio format
+or automatically play converted audio back to the local user.
+
+When the virtual microphone is enabled, the module sets the PulseAudio
+compatibility layer's default capture fragment to `1024/48000` (about 21 ms).
+PipeWire's built-in default is two seconds, and some voice applications use it
+when they do not provide their own capture fragment, causing multi-second delay.
+Applications that explicitly request a fragment size keep their own setting.
+The smaller default increases the audio service's processing frequency slightly.
+After rebuilding, an already-open voice call must recreate its capture stream to
+pick up the new buffer setting.
+
+## Use speakers without acoustic feedback
+
+When a physical microphone picks up speaker output, that audio enters RVC
+again and creates an echo or feedback loop. Realtime GUI input and output noise
+reduction are not acoustic echo cancellation. Headphones remain the
+lowest-latency and most reliable solution.
+
+When physical speakers are required, enable PipeWire's WebRTC echo canceller:
+
+```nix
+programs.rvc.virtualMic = {
+  enable = true;
+  echoCancellation.enable = true;
+};
+```
+
+This adds `RVC-Echo-Cancelled-Input`. It compares the current PipeWire default
+microphone with the monitor of the default output, so no physical ALSA name
+such as PCH is hard-coded. First select the default microphone and speakers in
+the desktop audio settings, then configure Realtime GUI for the intended use:
+
+| Purpose | Realtime GUI input | Realtime GUI output |
+| --- | --- | --- |
+| Voice application | `RVC-Echo-Cancelled-Input` | `RVC-Output` |
+| Local speaker test | `RVC-Echo-Cancelled-Input` | `pipewire` |
+
+For a voice application, keep its microphone set to `RVC-Microphone` and its
+playback output set to the physical speakers. For a local test, `pipewire`
+plays the converted result through the speakers but does not also write it to
+`RVC-Microphone`.
+
+Echo cancellation removes only audio observed on the default output monitor.
+Applications routed elsewhere are outside the reference path. AEC also adds
+processing and cannot compensate perfectly for every room, volume, or device
+placement, so it remains optional.
 
 ## Inspect PipeWire devices
 
-Confirm that both virtual devices exist:
+Confirm that the virtual devices exist:
 
 ```console
 pactl list short sinks | grep rvc_output
 pactl list short sources | grep rvc_mic
 ```
 
-Inspect the current default source and audio graph:
+Inspect the default input and complete audio graph:
 
 ```console
 wpctl status
 pactl info
 ```
 
-The module creates the devices through `pipewire-pulse`. Its user service
-restarts when the generated configuration changes. If a session retains old
-devices, log in again or restart it manually:
+The module creates virtual devices through `pipewire-pulse`. Its user service
+restarts when generated configuration changes. If the current session retains
+old devices, log in again or run:
 
 ```console
 systemctl --user restart pipewire-pulse.service

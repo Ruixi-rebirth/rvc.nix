@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require both usage guides to document every flake application."""
+"""Require both usage guides to document every public app and package."""
 
 import json
 import re
@@ -13,11 +13,14 @@ GUIDES = ("docs/usage.md", "docs/usage.zh-CN.md")
 
 
 def main(argv: list[str]) -> None:
-    if len(argv) != 3:
-        raise SystemExit(f"usage: {argv[0]} REPO_ROOT APP_NAMES_JSON")
+    if len(argv) != 4:
+        raise SystemExit(
+            f"usage: {argv[0]} REPO_ROOT APP_NAMES_JSON PACKAGE_NAMES_JSON"
+        )
 
     repo_root = Path(argv[1])
     app_names = set(json.loads(Path(argv[2]).read_text(encoding="utf-8")))
+    package_names = set(json.loads(Path(argv[3]).read_text(encoding="utf-8")))
     expected_named = app_names - {"default"}
     failures = []
 
@@ -34,10 +37,23 @@ def main(argv: list[str]) -> None:
         if "default" in app_names and not DEFAULT_APP_PATTERN.search(text):
             failures.append(f"{relative_path}: missing default `nix run .` app")
 
+        missing_packages = sorted(
+            name
+            for name in package_names
+            if f"`{name}`" not in text and f".#{name}" not in text
+        )
+        if missing_packages:
+            failures.append(
+                f"{relative_path}: missing packages {missing_packages!r}"
+            )
+
     if failures:
         raise SystemExit("Application documentation drifted:\n  " + "\n  ".join(failures))
 
-    print(f"Application documentation matches all {len(app_names)} flake apps")
+    print(
+        "Output documentation matches "
+        f"{len(app_names)} flake apps and {len(package_names)} packages"
+    )
 
 
 if __name__ == "__main__":

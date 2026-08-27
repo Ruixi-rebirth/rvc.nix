@@ -21,6 +21,15 @@ let
       flags = [ ];
     }
   ];
+  virtualMicPulseConfig = {
+    # PipeWire's Pulse compatibility layer defaults unspecified capture
+    # fragments to two seconds. Use one graph quantum for interactive voice
+    # applications; clients that request their own fragment size are unchanged.
+    "pulse.properties" = {
+      "pulse.default.frag" = "1024/48000";
+    };
+    "pulse.cmd" = virtualMicPulseCommands;
+  };
   echoCancellationModule = {
     name = "libpipewire-module-echo-cancel";
     args = {
@@ -48,12 +57,13 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${system}.cpu-with-models;
-      defaultText = lib.literalExpression "rvc-nix.packages.${system}.cpu-with-models";
-      example = lib.literalExpression "rvc-nix.packages.${system}.cuda118-with-models";
+      default = self.packages.${system}.default;
+      defaultText = lib.literalExpression "rvc-nix.packages.${system}.default";
+      example = lib.literalExpression "rvc-nix.packages.${system}.cuda118";
       description = ''
-        RVC package to install. The CPU package with pinned inference assets
-        is the default; select a CUDA package explicitly when appropriate.
+        RVC package used by every module feature. It is installed system-wide,
+        and the optional WebUI service starts rvc-web from this same package.
+        The default is the complete CPU inference package.
       '';
     };
 
@@ -101,9 +111,7 @@ in
       pulse.enable = lib.mkDefault true;
       wireplumber.enable = lib.mkDefault true;
 
-      extraConfig.pipewire-pulse."90-rvc-virtual-mic" = {
-        "pulse.cmd" = virtualMicPulseCommands;
-      };
+      extraConfig.pipewire-pulse."90-rvc-virtual-mic" = virtualMicPulseConfig;
 
       extraConfig.pipewire."90-rvc-echo-cancellation" = lib.mkIf cfg.virtualMic.echoCancellation.enable {
         "context.modules" = [ echoCancellationModule ];
@@ -151,7 +159,11 @@ in
     };
 
     systemd.user.services.pipewire-pulse.restartTriggers = lib.mkIf cfg.virtualMic.enable [
-      (builtins.toJSON virtualMicPulseCommands)
+      (builtins.toJSON virtualMicPulseConfig)
+    ];
+
+    systemd.user.services.pipewire.restartTriggers = lib.mkIf cfg.virtualMic.enable [
+      (builtins.toJSON (lib.optional cfg.virtualMic.echoCancellation.enable echoCancellationModule))
     ];
 
     systemd.user.services.rvc-webui = lib.mkIf cfg.webui.enable {

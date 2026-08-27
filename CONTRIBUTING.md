@@ -25,7 +25,7 @@ Where to make a change:
 
 | Change                        | File                                     |
 | ----------------------------- | ---------------------------------------- |
-| Add a package or app variant  | `flake.nix` (`mkVariants`)               |
+| Add a backend or app workflow | `flake.nix`                              |
 | Change launcher behaviour     | `nix/launcher.nix`                       |
 | Add a flake check             | `nix/checks.nix`                         |
 | Change the RVC source patches | `nix/patches/rules.py`, then regenerate  |
@@ -33,6 +33,9 @@ Where to make a change:
 | Fix a wheel build/ELF issue   | `nix/python-overrides.nix`               |
 | Add a NixOS module option     | `nix/module.nix` + `nix/module-test.nix` |
 | Add a Python dependency       | `python/*/pyproject.toml` + each lock    |
+
+Runtime package variants come from `mkRvcPackages`; application workflows come
+from `mkAppsForBackend`.
 
 ## Style conventions
 
@@ -62,6 +65,12 @@ no global formatter installation is required. It formats Nix, TOML, and
 standalone shell files, runs ShellCheck, and checks Markdown without reflowing
 prose. CI runs the same wrapper in `--ci` mode. Packaged launcher fragments are
 checked separately by `writeShellApplication` during the Nix build.
+
+The patch generator is also a development-shell command:
+
+```console
+nix develop -c rvc-generate-patches
+```
 
 If the change affects CUDA packaging, also run:
 
@@ -122,7 +131,7 @@ libraries. Do not duplicate the same fix across the three workspaces.
 
    ```console
    nix flake update rvc-src
-   nix run .#generate-patches
+   nix develop -c rvc-generate-patches
    ```
 
    The generator applies every patch to a clean tree, byte-compares the result

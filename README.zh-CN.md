@@ -26,10 +26,10 @@ NixOS 模块还可配置本机 WebUI 服务和 PipeWire 虚拟麦克风。
 nix run github:Ruixi-rebirth/rvc.nix
 
 # 适用于 RTX 50 系以前受支持 NVIDIA 显卡的 CUDA 11.8
-nix run github:Ruixi-rebirth/rvc.nix#cuda118-with-models
+nix run github:Ruixi-rebirth/rvc.nix#realtime-cuda118
 
 # 适用于 NVIDIA RTX 50 系列显卡的 CUDA 12.8
-nix run github:Ruixi-rebirth/rvc.nix#cuda128-with-models
+nix run github:Ruixi-rebirth/rvc.nix#realtime-cuda128
 ```
 
 以上三条命令都包含用于提取内容特征的 HuBERT 和用于提取音高的 RMVPE，但不包含
@@ -43,35 +43,39 @@ CPU 推理；本项目不提供 ROCm、Vulkan 或 Intel GPU 加速。
 
 ```console
 # WebUI：包含文件变声所需的推理模型
-nix run github:Ruixi-rebirth/rvc.nix#web-with-models
+nix run github:Ruixi-rebirth/rvc.nix#web
 
 # WebUI：包含本项目打包的完整模型集（下载量更大）
-nix run github:Ruixi-rebirth/rvc.nix#web-with-all-models
+nix run github:Ruixi-rebirth/rvc.nix#web-all
 
 # RVC CLI
-nix run github:Ruixi-rebirth/rvc.nix#cli-with-models -- --help
+nix run github:Ruixi-rebirth/rvc.nix#cli -- --help
 
 # PyMSS 音源分离 CLI：包含配套权重
-nix run github:Ruixi-rebirth/rvc.nix#pymss-with-models -- infer --help
+nix run github:Ruixi-rebirth/rvc.nix#pymss -- infer --help
 ```
 
-## 选择模型资源
+## 每条命令包含哪些模型
 
-模型后缀表示软件包预置了哪些资源；任何版本都不包含已经训练完成的目标音色模型。
+可运行命令会自动带上该功能所需的资源，普通用户不必再单独选择模型组合。
 
-| 输出 | 预置资源 | 用途 |
+| 命令 | 预置资源 | 用途 |
 | --- | --- | --- |
-| 默认及 RVC `-with-models` | HuBERT、RMVPE | RVC 变声 |
-| PyMSS `-with-models` | 5 个权重 | 音源分离 |
-| `-with-all-models` | 全部打包资源 | WebUI 全部功能 |
-| 不带模型后缀的运行输出 | 无 | 使用已有模型 |
+| `realtime`、`web`、`cli` | HuBERT、RMVPE | 语音变声 |
+| `pymss` | 5 个 PyMSS 权重 | 音乐音源分离 |
+| `web-all` | 本项目打包的全部模型资源 | 变声、训练和音源分离 |
 
-之所以把可运行的全模型命令命名为 `web-with-all-models`，是因为上游 WebUI 同时
-提供文件变声、训练和音源分离功能。该命令预置 HuBERT、RMVPE、RVC v1/v2 预训练
-权重、静音样本和 5 个 PyMSS 权重。其中的 v1/v2 权重只用于初始化训练；用户仍需
-准备目标声音的录音，训练后得到的 `.pth` 才是变声时使用的目标音色模型。
+在任意命令名后添加 `-cuda118` 或 `-cuda128`，只会切换运行后端。例如
+`web-cuda118` 和 `web-all-cuda128`。
 
-完整的命令、软件包和独立模型输出矩阵见[使用手册](docs/usage.zh-CN.md)。
+这些命令都不包含已经训练完成的目标音色。`web-all` 在推理模型和 PyMSS 权重
+之外，还加入上游训练所需的 RVC v1/v2 预训练权重与静音样本。预训练权重只用于
+初始化训练；用户仍需准备目标声音的录音，训练产出的 `.pth` 才是变声时使用的
+目标音色模型。
+
+以上名称是供 `nix run` 使用的应用入口。安装到 NixOS 时只需选择一个 CPU/CUDA
+运行软件包；`models-*` 输出仅用于高级模型组合。三类输出的完整列表和自定义方式
+见[使用手册](docs/usage.zh-CN.md)。
 
 ## 选择 CPU 或 CUDA
 

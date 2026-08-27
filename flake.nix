@@ -55,35 +55,38 @@
       ...
     }:
     let
-      # Single source of truth for every RVC package variant. The perSystem
-      # outputs and the default overlay both build from this table, so a new
-      # variant is immediately available as a package, an app, and an overlay
-      # attribute; the overlay-interface check only verifies the wiring.
-      # Model variants reuse the lean package's callPackage fixpoint via
-      # override, mirroring how consumers would customise the overlay.
-      mkVariants =
-        pkgs: modelSets:
-        let
-          mkPackage =
-            acceleration: models:
-            pkgs.callPackage ./nix/package.nix {
-              inherit inputs acceleration models;
-            };
-          cpu = mkPackage "cpu" null;
-          cuda118 = mkPackage "cuda118" null;
-          cuda128 = mkPackage "cuda128" null;
-        in
-        {
-          cpu = cpu;
-          cpu-with-models = cpu.override { models = modelSets.inference; };
-          cpu-with-all-models = cpu.override { models = modelSets.all; };
-          cuda118 = cuda118;
-          cuda118-with-models = cuda118.override { models = modelSets.inference; };
-          cuda118-with-all-models = cuda118.override { models = modelSets.all; };
-          cuda128 = cuda128;
-          cuda128-with-models = cuda128.override { models = modelSets.inference; };
-          cuda128-with-all-models = cuda128.override { models = modelSets.all; };
+      backends = {
+        cpu = {
+          label = "CPU";
         };
+        cuda118 = {
+          label = "CUDA 11.8";
+        };
+        cuda128 = {
+          label = "CUDA 12.8";
+        };
+      };
+
+      # Backend and model assets are independent package dimensions. Public
+      # packages, apps, and overlay entries below all select from this table.
+      mkRvcPackages =
+        pkgs: modelAssets:
+        nixpkgs.lib.mapAttrs (
+          backend: _spec:
+          let
+            noModels = pkgs.callPackage ./nix/package.nix {
+              inherit inputs;
+              acceleration = backend;
+              models = null;
+            };
+          in
+          {
+            inherit noModels;
+            inferenceModels = noModels.override { models = modelAssets.inference; };
+            allModels = noModels.override { models = modelAssets.all; };
+            pymssModels = noModels.override { models = modelAssets.pymss; };
+          }
+        ) backends;
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" ];
@@ -95,28 +98,25 @@
         overlays.default =
           final: _prev:
           let
-            modelSets = final.callPackage ./nix/models.nix { };
-            variants = mkVariants final modelSets;
+            modelAssets = final.callPackage ./nix/models.nix { };
+            rvcPackages = mkRvcPackages final modelAssets;
           in
           {
-            rvc-models-inference = modelSets.inference;
-            rvc-models-pretrained-v1 = modelSets.pretrained-v1;
-            rvc-models-pretrained-v2 = modelSets.pretrained-v2;
-            rvc-models-mute = modelSets.mute;
-            rvc-models-pymss = modelSets.pymss;
-            rvc-models-training = modelSets.training;
-            rvc-models-all = modelSets.all;
+            rvc-models-inference = modelAssets.inference;
+            rvc-models-pretrained-v1 = modelAssets.pretrained-v1;
+            rvc-models-pretrained-v2 = modelAssets.pretrained-v2;
+            rvc-models-mute = modelAssets.mute;
+            rvc-models-pymss = modelAssets.pymss;
+            rvc-models-training = modelAssets.training;
+            rvc-models-all = modelAssets.all;
 
-            rvc-cpu = variants.cpu;
-            rvc-cuda118 = variants.cuda118;
-            rvc-cuda128 = variants.cuda128;
-            rvc-cpu-with-models = variants.cpu-with-models;
-            rvc-cuda118-with-models = variants.cuda118-with-models;
-            rvc-cuda128-with-models = variants.cuda128-with-models;
-            rvc-cpu-with-all-models = variants.cpu-with-all-models;
-            rvc-cuda118-with-all-models = variants.cuda118-with-all-models;
-            rvc-cuda128-with-all-models = variants.cuda128-with-all-models;
-            rvc = variants.cpu-with-models;
+            rvc-cpu = rvcPackages.cpu.inferenceModels;
+            rvc-cuda118 = rvcPackages.cuda118.inferenceModels;
+            rvc-cuda128 = rvcPackages.cuda128.inferenceModels;
+            rvc-cpu-all = rvcPackages.cpu.allModels;
+            rvc-cuda118-all = rvcPackages.cuda118.allModels;
+            rvc-cuda128-all = rvcPackages.cuda128.allModels;
+            rvc = rvcPackages.cpu.inferenceModels;
           };
       };
 
@@ -127,12 +127,12 @@
           ...
         }:
         let
-          modelSets = pkgs.callPackage ./nix/models.nix { };
+          modelAssets = pkgs.callPackage ./nix/models.nix { };
           consumerPkgs = import inputs.nixpkgs {
             inherit system;
             overlays = [ self.overlays.default ];
           };
-          variants = mkVariants pkgs modelSets;
+          rvcPackages = mkRvcPackages pkgs modelAssets;
           treefmtEval = inputs.treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
 
           mkApp = pkg: bin: description: {
@@ -141,40 +141,34 @@
             meta.description = description;
           };
 
-          mkCudaApps =
-            version:
+          mkAppsForBackend =
+            backend:
             let
-              prefix = "cuda${version}";
-              label = if version == "118" then "11.8" else "12.8";
-              lean = variants.${prefix};
-              withModels = variants.${prefix + "-with-models"};
-              withAllModels = variants.${prefix + "-with-all-models"};
-              withPymssModels = lean.override { models = modelSets.pymss; };
+              inherit (backends.${backend}) label;
+              suffix = if backend == "cpu" then "" else "-${backend}";
+              backendPackages = rvcPackages.${backend};
             in
             {
-              "${prefix}" = mkApp lean "rvc-realtime" "Start the CUDA ${label} RVC realtime GUI";
-              "${prefix}-web" = mkApp lean "rvc-web" "Start the CUDA ${label} RVC WebUI";
-              "${prefix}-cli" = mkApp lean "rvc-cli" "Run CUDA ${label} offline RVC inference";
-              "${prefix}-python" =
-                mkApp lean "rvc-python"
-                  "Run an upstream RVC Python command with CUDA ${label}";
-              "${prefix}-pymss" = mkApp lean "pymss" "Run the CUDA ${label} PyMSS CLI";
-              "${prefix}-pymss-with-models" =
-                mkApp withPymssModels "pymss"
-                  "Run the CUDA ${label} PyMSS CLI with pinned model weights";
-              "${prefix}-with-models" =
-                mkApp withModels "rvc-realtime"
-                  "Start CUDA ${label} RVC with pinned inference models";
-              "${prefix}-web-with-models" =
-                mkApp withModels "rvc-web"
-                  "Start CUDA ${label} RVC WebUI with pinned inference models";
-              "${prefix}-web-with-all-models" =
-                mkApp withAllModels "rvc-web"
-                  "Start CUDA ${label} RVC WebUI with all pinned model assets";
-              "${prefix}-cli-with-models" =
-                mkApp withModels "rvc-cli"
-                  "Run CUDA ${label} RVC CLI with pinned inference models";
+              "realtime${suffix}" =
+                mkApp backendPackages.inferenceModels "rvc-realtime"
+                  "Start the ${label} RVC realtime GUI";
+              "web${suffix}" =
+                mkApp backendPackages.inferenceModels "rvc-web"
+                  "Start the ${label} RVC WebUI for inference";
+              "web-all${suffix}" =
+                mkApp backendPackages.allModels "rvc-web"
+                  "Start the ${label} RVC WebUI with all model assets";
+              "cli${suffix}" =
+                mkApp backendPackages.inferenceModels "rvc-cli"
+                  "Run ${label} offline RVC inference";
+              "pymss${suffix}" =
+                mkApp backendPackages.pymssModels "pymss"
+                  "Run the ${label} PyMSS CLI with model weights";
             };
+
+          rvcApps = nixpkgs.lib.foldl' (apps: backend: apps // mkAppsForBackend backend) { } (
+            builtins.attrNames backends
+          );
 
           generatePatchesCommand = pkgs.writeShellApplication {
             name = "rvc-generate-patches";
@@ -198,63 +192,46 @@
           };
         in
         {
-          packages = variants // {
-            default = variants.cpu-with-models;
-            models-inference = modelSets.inference;
-            models-pretrained-v1 = modelSets.pretrained-v1;
-            models-pretrained-v2 = modelSets.pretrained-v2;
-            models-mute = modelSets.mute;
-            models-pymss = modelSets.pymss;
-            models-training = modelSets.training;
-            models-all = modelSets.all;
+          packages = {
+            default = rvcPackages.cpu.inferenceModels;
+            cpu = rvcPackages.cpu.inferenceModels;
+            cuda118 = rvcPackages.cuda118.inferenceModels;
+            cuda128 = rvcPackages.cuda128.inferenceModels;
+            cpu-all = rvcPackages.cpu.allModels;
+            cuda118-all = rvcPackages.cuda118.allModels;
+            cuda128-all = rvcPackages.cuda128.allModels;
+            models-inference = modelAssets.inference;
+            models-pretrained-v1 = modelAssets.pretrained-v1;
+            models-pretrained-v2 = modelAssets.pretrained-v2;
+            models-mute = modelAssets.mute;
+            models-pymss = modelAssets.pymss;
+            models-training = modelAssets.training;
+            models-all = modelAssets.all;
           };
 
           apps = {
             default =
-              mkApp variants.cpu-with-models "rvc-realtime"
+              mkApp rvcPackages.cpu.inferenceModels "rvc-realtime"
                 "Start CPU RVC with pinned inference models";
-            realtime = mkApp variants.cpu "rvc-realtime" "Start the CPU RVC realtime GUI";
-            web = mkApp variants.cpu "rvc-web" "Start the CPU RVC training and inference WebUI";
-            cli = mkApp variants.cpu "rvc-cli" "Run CPU offline RVC inference from the command line";
-            python = mkApp variants.cpu "rvc-python" "Run an upstream RVC Python command on CPU";
-            pymss = mkApp variants.cpu "pymss" "Run the CPU PyMSS command-line interface";
-            pymss-with-models = mkApp (variants.cpu.override {
-              models = modelSets.pymss;
-            }) "pymss" "Run the CPU PyMSS CLI with pinned model weights";
-            with-models =
-              mkApp variants.cpu-with-models "rvc-realtime"
-                "Start CPU RVC with pinned inference models";
-            web-with-models =
-              mkApp variants.cpu-with-models "rvc-web"
-                "Start CPU RVC WebUI with pinned inference models";
-            web-with-all-models =
-              mkApp variants.cpu-with-all-models "rvc-web"
-                "Start CPU RVC WebUI with all pinned model assets";
-            cli-with-models =
-              mkApp variants.cpu-with-models "rvc-cli"
-                "Run CPU RVC CLI with pinned inference models";
-            generate-patches =
-              mkApp generatePatchesCommand "rvc-generate-patches"
-                "Regenerate downstream patches from the locked upstream source";
           }
-          // mkCudaApps "118"
-          // mkCudaApps "128";
+          // rvcApps;
 
           checks = import ./nix/checks.nix {
             inherit
               consumerPkgs
               inputs
-              modelSets
+              modelAssets
               pkgs
               self
               treefmtEval
-              variants
+              rvcPackages
               ;
           };
 
           devShells.default = pkgs.mkShell {
             packages = [
-              variants.cpu
+              generatePatchesCommand
+              rvcPackages.cpu.noModels
               treefmtEval.config.build.wrapper
               pkgs.uv
               pkgs.python312
