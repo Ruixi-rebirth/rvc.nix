@@ -37,17 +37,20 @@ The packaging hardens the single-user, local-machine threat model:
   to the configured weights directory.
 - **Network exposure.** The WebUI binds `127.0.0.1` by default. It is a
   trusted single-user interface with filesystem and training controls, and
-  the pinned Gradio 3.x has known CVEs that are only mitigated by the
-  localhost binding; authentication at a reverse proxy does not make it safe
-  for untrusted users. Treat `RVC_WEBUI_HOST` as a last resort.
+  the pinned Gradio 3.x has known CVEs. The loopback binding limits who can
+  reach it but does not make the interface safe for untrusted local users.
+  Reverse-proxy authentication is not a supported public deployment boundary.
 - **Runtime isolation.** Source and model assets are read-only in the Nix
   store; user models, logs, and configuration live under XDG paths. Hugging
   Face, Gradio, and ONNX Runtime telemetry default to disabled while explicit
   user environment settings are respected. Runtime network access is not
   forcibly disabled because upstream PyMSS exposes model download commands.
-- **CUDA fail-closed.** The CUDA variant requires a usable NVIDIA device that
-  meets RVC's minimum at startup instead of silently selecting CPU. Real model
-  forwards cover HuBERT, RMVPE, offline CLI, and realtime synthesis behavior.
+- **RVC CUDA fail-closed.** Realtime GUI, WebUI, RVC CLI, and `rvc-doctor` in a
+  CUDA package require a usable NVIDIA device that meets RVC's minimum instead
+  of silently selecting CPU. PyMSS retains its upstream `--device` selection,
+  and `rvc-python` runs the requested script without imposing a device. Real
+  model forwards cover HuBERT, RMVPE, RVC CLI conversion, and realtime
+  synthesis.
 
 ## Reporting a vulnerability
 

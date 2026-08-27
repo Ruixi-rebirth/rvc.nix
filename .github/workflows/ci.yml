@@ -60,9 +60,17 @@ jobs:
   # checks) without hardware: its forward paths need an NVIDIA runner, but a
   # successful build proves the CUDA-specific packaging is intact.
   cuda:
-    name: CUDA package build
+    name: ${{ matrix.label }} package build
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: cuda118
+            label: CUDA 11.8
+          - variant: cuda128
+            label: CUDA 12.8
 
     steps:
       - name: Check out repository
@@ -78,12 +86,12 @@ jobs:
           name: ruixi-rebirth
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
 
-      - name: Build the CUDA package
-        run: nix build .#cuda --no-link --print-build-logs
+      - name: Build the ${{ matrix.label }} package
+        run: nix build ".#${{ matrix.variant }}" --no-link --print-build-logs
 
-      - name: Push CUDA closures to Cachix
+      - name: Push ${{ matrix.label }} closures to Cachix
         if: github.ref == 'refs/heads/main'
         run: |
-          nix build .#cuda-with-models --no-link --print-build-logs
-          nix path-info --recursive .#cuda | cachix push ruixi-rebirth
-          nix path-info --recursive .#cuda-with-models | cachix push ruixi-rebirth
+          nix build ".#${{ matrix.variant }}-with-models" --no-link --print-build-logs
+          nix path-info --recursive ".#${{ matrix.variant }}" | cachix push ruixi-rebirth
+          nix path-info --recursive ".#${{ matrix.variant }}-with-models" | cachix push ruixi-rebirth

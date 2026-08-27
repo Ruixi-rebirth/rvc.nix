@@ -8,7 +8,8 @@
 
 assert lib.assertOneOf "acceleration" acceleration [
   "cpu"
-  "cuda"
+  "cuda118"
+  "cuda128"
 ];
 
 let
@@ -19,7 +20,27 @@ let
     uv2nix
     ;
 
-  workspaceRoot = if acceleration == "cuda" then ../. else ../python/cpu;
+  isCuda = acceleration != "cpu";
+  supportedModelChecks = [
+    "hubert-rmvpe-forward"
+    "realtime-synth-forward"
+  ];
+  modelSetName = if models == null then "<none>" else models.name or "<unnamed>";
+  modelChecks =
+    if models == null then
+      [ ]
+    else if models ? modelChecks then
+      models.modelChecks
+    else
+      throw "RVC model set ${modelSetName} must define modelChecks";
+  unknownModelChecks = lib.subtractLists supportedModelChecks modelChecks;
+  workspaceRoot =
+    {
+      cpu = ../python/cpu;
+      cuda118 = ../python/cuda118;
+      cuda128 = ../python/cuda128;
+    }
+    .${acceleration};
   workspace = uv2nix.lib.workspace.loadWorkspace { inherit workspaceRoot; };
   modelSuffix = lib.optionalString (models != null) "-with-${models.name}";
   python = pkgs.python312;
@@ -79,7 +100,7 @@ let
         done
       }
       apply_patch_set ${./patches/rvc}
-      ${lib.optionalString (acceleration == "cuda") ''
+      ${lib.optionalString isCuda ''
 
         apply_patch_set ${./patches/cuda}
       ''}
@@ -106,7 +127,7 @@ let
         ${pythonEnv}/bin/python ${./tests/checkpoint_runtime_security.py} \
           "$out/share/rvc" "$checkpoint_test_dir"
 
-      ${lib.optionalString (models != null) ''
+      ${lib.optionalString (lib.elem "hubert-rmvpe-forward" modelChecks) ''
 
         model_test_dir="$TMPDIR/inference-model-forward"
         mkdir -p \
@@ -124,20 +145,23 @@ let
           TRANSFORMERS_OFFLINE=1 \
           ${pythonEnv}/bin/python -P ${./tests/inference_model_forward.py} cpu
 
-        # The realtime synthesizer forward (net_g through infer/vc/pipeline
-        # and rtrvc.infer) runs whenever the bundled model set contains an
-        # official pretrained voice checkpoint.
-        if [ -f "${models}/assets/pretrained_v2/f0G40k.pth" ]; then
-          HF_HUB_OFFLINE=1 \
-            NUMBA_CACHE_DIR="$model_test_dir/cache/numba" \
-            PYTHONDONTWRITEBYTECODE=1 \
-            PYTHONPATH="$out/share/rvc" \
-            RVC_CACHE_DIR="$model_test_dir/cache" \
-            RVC_DATA_DIR="$model_test_dir" \
-            TRANSFORMERS_OFFLINE=1 \
-            ${pythonEnv}/bin/python -P ${./tests/realtime_infer_forward.py} \
-              "${models}/assets/pretrained_v2/f0G40k.pth" cpu
-        fi
+      ''}
+
+      ${lib.optionalString (lib.elem "realtime-synth-forward" modelChecks) ''
+
+        model_test_dir="$TMPDIR/realtime-model-forward"
+        mkdir -p "$model_test_dir/assets/rmvpe" "$model_test_dir/cache/numba"
+        ln -s ${models}/assets/rmvpe/rmvpe.pt "$model_test_dir/assets/rmvpe/rmvpe.pt"
+
+        HF_HUB_OFFLINE=1 \
+          NUMBA_CACHE_DIR="$model_test_dir/cache/numba" \
+          PYTHONDONTWRITEBYTECODE=1 \
+          PYTHONPATH="$out/share/rvc" \
+          RVC_CACHE_DIR="$model_test_dir/cache" \
+          RVC_DATA_DIR="$model_test_dir" \
+          TRANSFORMERS_OFFLINE=1 \
+          ${pythonEnv}/bin/python -P ${./tests/realtime_infer_forward.py} \
+            "${models}/assets/pretrained_v2/f0G40k.pth" cpu
       ''}
 
       ${python.interpreter} ${./tests/training_subprocess_security.py} \
@@ -156,6 +180,12 @@ let
       ;
   };
 in
+assert lib.assertMsg (lib.isList modelChecks)
+  "RVC model set ${modelSetName}: modelChecks must be a list";
+assert lib.assertMsg (lib.all builtins.isString modelChecks)
+  "RVC model set ${modelSetName}: modelChecks entries must be strings";
+assert lib.assertMsg (unknownModelChecks == [ ])
+  "RVC model set ${modelSetName}: unsupported model checks: ${lib.concatStringsSep ", " unknownModelChecks}";
 pkgs.symlinkJoin {
   name = "rvc-${acceleration}${modelSuffix}";
   paths = launcherParts.commands ++ [ launcherParts.desktopItem ];

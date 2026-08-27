@@ -1,7 +1,7 @@
 [project]
-name = "rvc-nix"
+name = "rvc-nix-cuda118"
 version = "0.1.0"
-description = "Locked Python runtime for Retrieval-based Voice Conversion"
+description = "Locked CUDA 11.8 Python runtime for Retrieval-based Voice Conversion"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "altair>=4.2.0,<5",
@@ -24,6 +24,7 @@ dependencies = [
   # Torch owns the CUDA/cuDNN dependency closure. Using the CPU ONNX provider
   # avoids loading ONNX Runtime's cuDNN 8 ABI into Torch 2.7's cuDNN 9 process.
   "onnxruntime>=1.24.4,<2",
+  "opencv-python-headless>=4.10.0,<5",
   "packaging>=24.0",
   "praat-parselmouth>=0.4.5,<1",
   "pydantic>=1.10.13,<2",
@@ -31,9 +32,6 @@ dependencies = [
   # PyPI copies would duplicate those modules and adds a conflicting Torch pin.
   "pyparsing>=3.0.9,<3.1",
   "pyyaml>=6.0.1",
-  # Keep this manifest aligned with python/cpu/pyproject.toml;
-  # checks.pyproject-sync (nix/tests/pyproject_sync.py) fails the build on
-  # undocumented drift. `hyper-connections` is a documented CPU-only pin.
   "scikit-learn>=1.6.0,<2",
   "scipy>=1.13.1,<2",
   "setuptools>=75.0,<81",
@@ -48,6 +46,7 @@ dependencies = [
   "transformers>=4.49.0,<4.50",
   "uvicorn>=0.20.0,<0.23",
   "websockets>=10.4,<11",
+  "wheel>=0.45,<1",
 ]
 
 [tool.uv]

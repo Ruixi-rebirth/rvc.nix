@@ -16,8 +16,9 @@ nix/module.nix           NixOS programs.rvc module
 nix/module-test.nix      Module assertions
 nix/patches/             Upstream patches, generator, and rule data
 nix/tests/               Flake-check test scripts + *-live.sh hardware tests
-nix/scripts/             doctor.py and launcher support scripts
-python/                  uv workspaces (root = CUDA, python/cpu = CPU)
+nix/scripts/             Runtime diagnostics used by packaged commands
+python/                  CPU, CUDA 11.8, and CUDA 12.8 uv workspaces
+docs/                    Complete usage and NixOS guides in English and Chinese
 ```
 
 Where to make a change:
@@ -31,7 +32,7 @@ Where to make a change:
 | Add or update a model asset   | `nix/models.nix`                         |
 | Fix a wheel build/ELF issue   | `nix/python-overrides.nix`               |
 | Add a NixOS module option     | `nix/module.nix` + `nix/module-test.nix` |
-| Add a Python dependency       | both `pyproject.toml`s + `uv lock`       |
+| Add a Python dependency       | `python/*/pyproject.toml` + each lock    |
 
 ## Style conventions
 
@@ -42,8 +43,8 @@ Where to make a change:
 - Comments: plain sentence comments that say why a thing exists. Structure
   comes from file and function boundaries, not decoration.
 - Python tooling (`nix/patches/`, `nix/tests/`, `nix/scripts/`): module
-  docstring at the top, data separated from logic, and every substitution or
-  assertion annotated with its purpose.
+  docstring at the top, data separated from logic, and comments where a rule or
+  assertion is not self-explanatory.
 
 ## Before opening a change
 
@@ -53,10 +54,20 @@ nix flake check path:.
 nix build path:.#cpu
 ```
 
+Use `path:.` while the checkout contains new, untracked files. A Git-backed
+`.` flake intentionally excludes those files until they are added to Git.
+
+The development shell contains the same `treefmt` wrapper used by `nix fmt`, so
+no global formatter installation is required. It formats Nix, TOML, and
+standalone shell files, runs ShellCheck, and checks Markdown without reflowing
+prose. CI runs the same wrapper in `--ci` mode. Packaged launcher fragments are
+checked separately by `writeShellApplication` during the Nix build.
+
 If the change affects CUDA packaging, also run:
 
 ```console
-nix build path:.#cuda
+nix build path:.#cuda118
+nix build path:.#cuda128
 ```
 
 CUDA runtime claims must include the GPU, NVIDIA driver version, and output of
@@ -85,10 +96,23 @@ runtime test.
   dependency. Do not hide unresolved required libraries.
 - Keep CPU as the default output. Hardware-specific acceleration must be
   explicit.
-- Keep the CPU and CUDA `pyproject.toml` manifests in sync;
+- Keep the CPU, CUDA 11.8, and CUDA 12.8 `pyproject.toml` manifests in sync;
   `checks.pyproject-sync` is the arbiter and documents the allowed exceptions.
 - Add or extend a flake check for every regression that can be tested without
   specialized hardware.
+
+## Python dependency variants
+
+CPU, CUDA 11.8, and CUDA 12.8 have separate `pyproject.toml` and `uv.lock`
+files because the official PyTorch indexes publish different wheel dependency
+graphs. Keep the three project manifests aligned except for documented runtime
+differences. `checks.pyproject-sync` compares them with the corresponding
+requirements in the pinned upstream source and rejects unexplained drift.
+
+Native wheel build and ELF fixes belong in `nix/python-overrides.nix`. Each
+override must describe a real missing dependency or loader requirement, remain
+scoped to the affected package, and avoid hiding unresolved required
+libraries. Do not duplicate the same fix across the three workspaces.
 
 ## Updating upstream RVC
 
@@ -103,7 +127,7 @@ runtime test.
 
    The generator applies every patch to a clean tree, byte-compares the result
    against the build pipeline, and re-runs the installCheck assertions. Any
-   hunk that no longer matches fails here — review whether the change is still
+   hunk that no longer matches fails here. Review whether the change is still
    needed, was adopted upstream, or must be rewritten.
 
 3. Rebuild CPU and CUDA from a clean evaluation.
@@ -119,19 +143,38 @@ updates are deliberate pull requests, not an automatic moving target. A patch
 hunk that no longer applies is treated as a required patch review rather than
 bypassed.
 
+## Live acceptance tests
+
+`nix flake check` covers tests that can run without a display, physical audio
+hardware, or an active PipeWire graph. The following scripts under `nix/tests/`
+exercise hardware-dependent behavior:
+
+- `cli-e2e-live.sh`
+- `realtime-infer-live.sh`
+- `realtime-gui-live.sh`
+- `realtime-gui-click-live.sh`
+- `webui-live.sh`
+- `pipewire-live.sh`
+
+Run the relevant scripts on the target machine. Calling one without arguments
+prints its required inputs. CUDA runtime claims must record the GPU model,
+NVIDIA driver, selected package, and `rvc-doctor` result. A successful CUDA
+build is not a hardware runtime test.
+
 ## Where to start
 
 Good first contributions, no specialized hardware required:
 
 - add or tighten a `checks.*` assertion or extend an existing one
-- document a troubleshooting entry in the README
+- document a troubleshooting entry in the relevant usage or NixOS guide
 - reduce duplication in the flake outputs or the NixOS module
 - improve `nix/patches/generate_patches.py` ergonomics or error messages
 - translate documentation into a language you speak
 
 ## Release process
 
-1. Run `nix fmt`, `nix flake check path:.`, and build both `.#cpu` and `.#cuda`.
+1. Run `nix fmt`, `nix flake check path:.`, and build `.#cpu`, `.#cuda118`,
+   and `.#cuda128`.
 2. Draft release notes for the version and date, create a signed `vX.Y.Z` tag
    from `main`, and publish the notes. Never move an existing release tag.
 3. Confirm the release's CI run pushed the CPU and CUDA closures to the

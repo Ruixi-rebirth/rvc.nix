@@ -70,15 +70,19 @@
               inherit inputs acceleration models;
             };
           cpu = mkPackage "cpu" null;
-          cuda = mkPackage "cuda" null;
+          cuda118 = mkPackage "cuda118" null;
+          cuda128 = mkPackage "cuda128" null;
         in
         {
           cpu = cpu;
           cpu-with-models = cpu.override { models = modelSets.inference; };
           cpu-with-all-models = cpu.override { models = modelSets.all; };
-          cuda = cuda;
-          cuda-with-models = cuda.override { models = modelSets.inference; };
-          cuda-with-all-models = cuda.override { models = modelSets.all; };
+          cuda118 = cuda118;
+          cuda118-with-models = cuda118.override { models = modelSets.inference; };
+          cuda118-with-all-models = cuda118.override { models = modelSets.all; };
+          cuda128 = cuda128;
+          cuda128-with-models = cuda128.override { models = modelSets.inference; };
+          cuda128-with-all-models = cuda128.override { models = modelSets.all; };
         };
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
@@ -96,16 +100,23 @@
           in
           {
             rvc-models-inference = modelSets.inference;
+            rvc-models-pretrained-v1 = modelSets.pretrained-v1;
+            rvc-models-pretrained-v2 = modelSets.pretrained-v2;
+            rvc-models-mute = modelSets.mute;
+            rvc-models-pymss = modelSets.pymss;
             rvc-models-training = modelSets.training;
             rvc-models-all = modelSets.all;
 
             rvc-cpu = variants.cpu;
-            rvc-cuda = variants.cuda;
+            rvc-cuda118 = variants.cuda118;
+            rvc-cuda128 = variants.cuda128;
             rvc-cpu-with-models = variants.cpu-with-models;
-            rvc-cuda-with-models = variants.cuda-with-models;
+            rvc-cuda118-with-models = variants.cuda118-with-models;
+            rvc-cuda128-with-models = variants.cuda128-with-models;
             rvc-cpu-with-all-models = variants.cpu-with-all-models;
-            rvc-cuda-with-all-models = variants.cuda-with-all-models;
-            rvc = variants.cpu;
+            rvc-cuda118-with-all-models = variants.cuda118-with-all-models;
+            rvc-cuda128-with-all-models = variants.cuda128-with-all-models;
+            rvc = variants.cpu-with-models;
           };
       };
 
@@ -130,6 +141,41 @@
             meta.description = description;
           };
 
+          mkCudaApps =
+            version:
+            let
+              prefix = "cuda${version}";
+              label = if version == "118" then "11.8" else "12.8";
+              lean = variants.${prefix};
+              withModels = variants.${prefix + "-with-models"};
+              withAllModels = variants.${prefix + "-with-all-models"};
+              withPymssModels = lean.override { models = modelSets.pymss; };
+            in
+            {
+              "${prefix}" = mkApp lean "rvc-realtime" "Start the CUDA ${label} RVC realtime GUI";
+              "${prefix}-web" = mkApp lean "rvc-web" "Start the CUDA ${label} RVC WebUI";
+              "${prefix}-cli" = mkApp lean "rvc-cli" "Run CUDA ${label} offline RVC inference";
+              "${prefix}-python" =
+                mkApp lean "rvc-python"
+                  "Run an upstream RVC Python command with CUDA ${label}";
+              "${prefix}-pymss" = mkApp lean "pymss" "Run the CUDA ${label} PyMSS CLI";
+              "${prefix}-pymss-with-models" =
+                mkApp withPymssModels "pymss"
+                  "Run the CUDA ${label} PyMSS CLI with pinned model weights";
+              "${prefix}-with-models" =
+                mkApp withModels "rvc-realtime"
+                  "Start CUDA ${label} RVC with pinned inference models";
+              "${prefix}-web-with-models" =
+                mkApp withModels "rvc-web"
+                  "Start CUDA ${label} RVC WebUI with pinned inference models";
+              "${prefix}-web-with-all-models" =
+                mkApp withAllModels "rvc-web"
+                  "Start CUDA ${label} RVC WebUI with all pinned model assets";
+              "${prefix}-cli-with-models" =
+                mkApp withModels "rvc-cli"
+                  "Run CUDA ${label} RVC CLI with pinned inference models";
+            };
+
           generatePatchesCommand = pkgs.writeShellApplication {
             name = "rvc-generate-patches";
             runtimeInputs = [
@@ -153,11 +199,12 @@
         in
         {
           packages = variants // {
-            default = variants.cpu;
+            default = variants.cpu-with-models;
             models-inference = modelSets.inference;
             models-pretrained-v1 = modelSets.pretrained-v1;
             models-pretrained-v2 = modelSets.pretrained-v2;
             models-mute = modelSets.mute;
+            models-pymss = modelSets.pymss;
             models-training = modelSets.training;
             models-all = modelSets.all;
           };
@@ -169,7 +216,11 @@
             realtime = mkApp variants.cpu "rvc-realtime" "Start the CPU RVC realtime GUI";
             web = mkApp variants.cpu "rvc-web" "Start the CPU RVC training and inference WebUI";
             cli = mkApp variants.cpu "rvc-cli" "Run CPU offline RVC inference from the command line";
+            python = mkApp variants.cpu "rvc-python" "Run an upstream RVC Python command on CPU";
             pymss = mkApp variants.cpu "pymss" "Run the CPU PyMSS command-line interface";
+            pymss-with-models = mkApp (variants.cpu.override {
+              models = modelSets.pymss;
+            }) "pymss" "Run the CPU PyMSS CLI with pinned model weights";
             with-models =
               mkApp variants.cpu-with-models "rvc-realtime"
                 "Start CPU RVC with pinned inference models";
@@ -182,26 +233,12 @@
             cli-with-models =
               mkApp variants.cpu-with-models "rvc-cli"
                 "Run CPU RVC CLI with pinned inference models";
-            cuda = mkApp variants.cuda "rvc-realtime" "Start the CUDA RVC realtime GUI";
-            cuda-web = mkApp variants.cuda "rvc-web" "Start the CUDA RVC WebUI";
-            cuda-cli = mkApp variants.cuda "rvc-cli" "Run CUDA offline RVC inference from the command line";
-            cuda-pymss = mkApp variants.cuda "pymss" "Run the CUDA PyMSS command-line interface";
             generate-patches =
               mkApp generatePatchesCommand "rvc-generate-patches"
                 "Regenerate downstream patches from the locked upstream source";
-            cuda-with-models =
-              mkApp variants.cuda-with-models "rvc-realtime"
-                "Start CUDA RVC with pinned inference models";
-            cuda-web-with-models =
-              mkApp variants.cuda-with-models "rvc-web"
-                "Start CUDA RVC WebUI with pinned inference models";
-            cuda-web-with-all-models =
-              mkApp variants.cuda-with-all-models "rvc-web"
-                "Start CUDA RVC WebUI with all pinned model assets";
-            cuda-cli-with-models =
-              mkApp variants.cuda-with-models "rvc-cli"
-                "Run CUDA RVC CLI with pinned inference models";
-          };
+          }
+          // mkCudaApps "118"
+          // mkCudaApps "128";
 
           checks = import ./nix/checks.nix {
             inherit

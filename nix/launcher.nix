@@ -11,6 +11,7 @@
 }:
 
 let
+  isCuda = acceleration != "cpu";
   launcher = pkgs.writeShellApplication {
     name = "rvc-launcher-${acceleration}";
     runtimeInputs =
@@ -23,6 +24,7 @@ let
 
       mode="''${1:-realtime}"
       if [ "$#" -gt 0 ]; then shift; fi
+      caller_dir="$PWD"
 
       ui_language="''${RVC_UI_LANGUAGE:-}"
       if [ -n "$ui_language" ]; then
@@ -47,7 +49,7 @@ let
       data_dir="''${RVC_DATA_DIR:-$data_home/rvc}"
       config_dir="''${RVC_CONFIG_DIR:-$config_home/rvc}"
       cache_dir="''${RVC_CACHE_DIR:-$cache_home/rvc}"
-      ${lib.optionalString (acceleration == "cuda") ''
+      ${lib.optionalString isCuda ''
 
         driver_library_path="''${RVC_DRIVER_LIBRARY_PATH:-/run/opengl-driver/lib}"
       ''}
@@ -72,7 +74,7 @@ let
         "$data_dir/assets/weights"
 
       for code_dir in i18n train; do
-        if [ ! -e "$data_dir/$code_dir" ]; then
+        if [ ! -e "$data_dir/$code_dir" ] && [ ! -L "$data_dir/$code_dir" ]; then
           ln -s "$source_dir/$code_dir" "$data_dir/$code_dir"
         fi
       done
@@ -82,7 +84,8 @@ let
       shopt -s nullglob
       for config_file in "$source_dir"/assets/pymss_weights/*.yaml; do
         config_name="$(basename "$config_file")"
-        if [ ! -e "$data_dir/assets/pymss_weights/$config_name" ]; then
+        if [ ! -e "$data_dir/assets/pymss_weights/$config_name" ] \
+          && [ ! -L "$data_dir/assets/pymss_weights/$config_name" ]; then
           ln -s "$config_file" "$data_dir/assets/pymss_weights/$config_name"
         fi
       done
@@ -112,6 +115,51 @@ let
         populate_model_tree ${models}/assets "$data_dir/assets"
         populate_model_tree ${models}/logs "$data_dir/logs"
       ''}
+
+      # The WebUI uses the flat upstream assets/pymss_weights layout, while
+      # the separately vendored PyMSS CLI catalog uses categorized paths.
+      # Link both views to the same immutable files so neither interface needs
+      # to download a second copy.
+      link_pymss_alias() {
+        source_path="$data_dir/assets/pymss_weights/$1"
+        destination_path="$data_dir/assets/pymss_weights/$2"
+        if [ -e "$source_path" ] && [ ! -e "$destination_path" ] \
+          && [ ! -L "$destination_path" ]; then
+          mkdir -p "$(dirname "$destination_path")"
+          ln -s "$source_path" "$destination_path"
+        fi
+      }
+
+      link_pymss_alias \
+        model_mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt \
+        karaoke/model_mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt
+      link_pymss_alias \
+        config_mel_band_roformer_karaoke.yaml \
+        karaoke/model_mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.yaml
+      link_pymss_alias \
+        dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt \
+        reverb_echo_control/dereverb/dereverb_mel_band_roformer_anvuew_sdr_19.1729.ckpt
+      link_pymss_alias \
+        dereverb_mel_band_roformer_anvuew.yaml \
+        reverb_echo_control/dereverb/dereverb_mel_band_roformer_anvuew_sdr_19.1729.yaml
+      link_pymss_alias \
+        dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050.ckpt \
+        reverb_echo_control/dereverb/dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050.ckpt
+      link_pymss_alias \
+        dereverb_mel_band_roformer_anvuew.yaml \
+        reverb_echo_control/dereverb/dereverb_mel_band_roformer_less_aggressive_anvuew_sdr_18.8050.yaml
+      link_pymss_alias \
+        model_bs_roformer_ep_317_sdr_12.9755.ckpt \
+        vocal/vocal_extraction/model_bs_roformer_ep_317_sdr_12.9755.ckpt
+      link_pymss_alias \
+        model_bs_roformer_ep_317_sdr_12.9755.yaml \
+        vocal/vocal_extraction/model_bs_roformer_ep_317_sdr_12.9755.yaml
+      link_pymss_alias \
+        model_bs_roformer_ep_368_sdr_12.9628.ckpt \
+        vocal/vocal_extraction/model_bs_roformer_ep_368_sdr_12.9628.ckpt
+      link_pymss_alias \
+        model_bs_roformer_ep_368_sdr_12.9628.yaml \
+        vocal/vocal_extraction/model_bs_roformer_ep_368_sdr_12.9628.yaml
 
       export RVC_DATA_DIR="$data_dir"
       export RVC_CONFIG_DIR="$config_dir"
@@ -150,8 +198,8 @@ let
       rmvpe_root="$(resolve_data_path "''${rmvpe_root-assets/rmvpe}")"
       export weight_root weight_pymss_root index_root outside_index_root rmvpe_root
       ${lib.optionalString (acceleration == "cpu") "unset LD_LIBRARY_PATH"}
-      ${lib.optionalString (acceleration == "cuda") "export RVC_REQUIRE_CUDA=1"}
-      ${lib.optionalString (acceleration == "cuda") ''
+      ${lib.optionalString isCuda "export RVC_REQUIRE_CUDA=1"}
+      ${lib.optionalString isCuda ''
         if [ -n "$driver_library_path" ]; then
           export LD_LIBRARY_PATH="$driver_library_path"
         else
@@ -175,6 +223,23 @@ let
         cli)
           exec ${pythonEnv}/bin/python "$source_dir/infer/cli.py" "$@"
           ;;
+        python)
+          python_target="''${1:-}"
+          case "$python_target" in
+            ""|-*) ;;
+            /*) ;;
+            *)
+              if [ -f "$source_dir/$python_target" ]; then
+                shift
+                set -- "$source_dir/$python_target" "$@"
+              elif [ -f "$caller_dir/$python_target" ]; then
+                shift
+                set -- "$caller_dir/$python_target" "$@"
+              fi
+              ;;
+          esac
+          exec ${pythonEnv}/bin/python "$@"
+          ;;
         pymss)
           exec ${pythonEnv}/bin/python -m tools.pymss.cli "$@"
           ;;
@@ -183,7 +248,7 @@ let
           echo "RVC source:  $source_dir"
           echo "RVC data:    $data_dir"
           echo "RVC config:  $config_dir"
-          ${lib.optionalString (acceleration == "cuda") ''
+          ${lib.optionalString isCuda ''
 
             echo "Driver libs: $driver_library_path"
           ''}
@@ -221,12 +286,13 @@ let
 
   commands = [
     # The multi-mode launcher itself is shipped so scripts and tests can call
-    # it directly (e.g. `rvc-launcher-cuda env`) instead of parsing the
+    # it directly (e.g. `rvc-launcher-cuda118 env`) instead of parsing the
     # generated wrappers.
     launcher
     realtimeCommand
     (mkCommand "rvc-web" "web")
     (mkCommand "rvc-cli" "cli")
+    (mkCommand "rvc-python" "python")
     (mkCommand "pymss" "pymss")
     (mkCommand "rvc-doctor" "doctor")
   ];

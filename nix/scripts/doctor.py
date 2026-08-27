@@ -31,7 +31,9 @@ def main() -> None:
         device_name = "CPU"
     print("device:", device_name)
 
-    if acceleration == "cuda" and not cuda_available:
+    is_cuda = acceleration.startswith("cuda")
+
+    if is_cuda and not cuda_available:
         raise SystemExit(
             "CUDA package selected, but PyTorch cannot use an NVIDIA device. "
             "Check the host driver and RVC_DRIVER_LIBRARY_PATH."
@@ -42,14 +44,18 @@ def main() -> None:
         message=r"pkg_resources is deprecated as an API.*",
         category=UserWarning,
     )
-    for module in (
+    modules = (
         "av",
+        "cv2",
         "faiss",
         "gradio",
         "librosa",
         "sounddevice",
         "soundfile",
-    ):
+    )
+    if acceleration == "cpu":
+        modules += ("torchvision",)
+    for module in modules:
         importlib.import_module(module)
     print("core imports: OK")
 
@@ -65,7 +71,7 @@ def main() -> None:
     np.testing.assert_allclose(session.run(None, {"X": values})[0], expected)
     print("ONNX Runtime CPU provider: OK", ort.__version__)
 
-    if acceleration == "cuda":
+    if is_cuda:
         # is_available() alone can report True even when the first real
         # launch fails (stale drivers or "no kernel image" errors), so
         # execute a tiny kernel instead of trusting the runtime probe.

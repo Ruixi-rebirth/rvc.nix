@@ -1,7 +1,7 @@
 [project]
-name = "rvc-nix-cpu"
+name = "rvc-nix-cuda128"
 version = "0.1.0"
-description = "Locked CPU Python runtime for Retrieval-based Voice Conversion"
+description = "Locked CUDA 12.8 Python runtime for Retrieval-based Voice Conversion"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "altair>=4.2.0,<5",
@@ -15,7 +15,6 @@ dependencies = [
   "freesimplegui>=5.1.0,<5.2",
   "gradio>=3.14.0,<3.15",
   "httpx>=0.23.0,<0.24",
-  "hyper-connections>=0.1.8,<0.4.3",
   "librosa>=0.10.2,<0.11",
   "local-attention>=1.11.0,<2",
   "markdown-it-py>=2.2.0,<3",
@@ -23,14 +22,16 @@ dependencies = [
   "mdit-py-plugins>=0.3.3,<0.4",
   "networkx>=3.2.0,<4",
   "numpy>=1.26.4,<2",
-  "onnxruntime-directml>=1.24.4,<2; platform_system == 'Windows'",
-  "onnxruntime>=1.24.4,<2; platform_system != 'Windows'",
+  # Upstream's CUDA 12.8 set uses the CUDA 12 / cuDNN 9 ONNX provider.
+  "onnxruntime-gpu>=1.19.2,<1.20",
   "opencv-python-headless>=4.10.0,<5",
   "packaging>=24.0",
   "praat-parselmouth>=0.4.5,<1",
   "pydantic>=1.10.13,<2",
+  # pymss and pymss-core are vendored by the pinned RVC source. Installing the
+  # PyPI copies would duplicate those modules and add a conflicting Torch pin.
   "pyparsing>=3.0.9,<3.1",
-  "pyyaml>=6.0",
+  "pyyaml>=6.0.1",
   "scikit-learn>=1.6.0,<2",
   "scipy>=1.13.1,<2",
   "setuptools>=75.0,<81",
@@ -38,14 +39,8 @@ dependencies = [
   "soundfile>=0.13.0,<1",
   "starlette>=0.22.0,<0.28",
   "tensorboard>=2.19.0",
-  # 2.4.1's weights_only loader is bypassable (CVE-2025-32434, fixed in
-  # 2.6.0); keep the CPU variant on the same release family as the CUDA
-  # variant, which is hardware-tested.
   "torch==2.7.1",
-  "torch-directml==0.2.5.dev240914; platform_system == 'Windows'",
   "torchaudio==2.7.1",
-  # Match the torchvision family to the security-updated Torch pin above.
-  "torchvision==0.22.1",
   "torchfcpe>=0.0.4,<0.1",
   "tqdm>=4.67.0,<5",
   "transformers>=4.49.0,<4.50",
@@ -56,19 +51,15 @@ dependencies = [
 
 [tool.uv]
 package = false
-# The flake only targets x86_64-linux with CPython; limiting the resolution
-# environments keeps the offline lock check independent of foreign-platform
-# wheel metadata.
 environments = [
   "sys_platform == 'linux' and platform_machine == 'x86_64' and platform_python_implementation == 'CPython'",
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-torchaudio = { index = "pytorch-cpu" }
-torchvision = { index = "pytorch-cpu" }
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }

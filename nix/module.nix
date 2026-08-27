@@ -30,7 +30,7 @@ in
       type = lib.types.package;
       default = self.packages.${system}.cpu-with-models;
       defaultText = lib.literalExpression "rvc-nix.packages.${system}.cpu-with-models";
-      example = lib.literalExpression "rvc-nix.packages.${system}.cuda-with-models";
+      example = lib.literalExpression "rvc-nix.packages.${system}.cuda118-with-models";
       description = ''
         RVC package to install. The CPU package with pinned inference assets
         is the default; select a CUDA package explicitly when appropriate.
