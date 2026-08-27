@@ -21,6 +21,26 @@ let
       flags = [ ];
     }
   ];
+  echoCancellationModule = {
+    name = "libpipewire-module-echo-cancel";
+    args = {
+      "library.name" = "aec/libspa-aec-webrtc";
+      "monitor.mode" = true;
+      "capture.props" = {
+        "node.name" = "rvc_echo_cancel_capture";
+        "node.description" = "RVC Echo Cancellation Capture";
+      };
+      "source.props" = {
+        "node.name" = "rvc_echo_cancelled_input";
+        "node.description" = "RVC Echo-Cancelled Input";
+        "media.class" = "Audio/Source";
+      };
+      "sink.props" = {
+        "node.name" = "rvc_echo_cancel_monitor";
+        "node.description" = "RVC Echo Cancellation Monitor";
+      };
+    };
+  };
 in
 {
   options.programs.rvc = {
@@ -63,6 +83,10 @@ in
     virtualMic.enable = lib.mkEnableOption ''
       the RVC PipeWire virtual output and microphone
     '';
+
+    virtualMic.echoCancellation.enable = lib.mkEnableOption ''
+      the WebRTC acoustic echo-cancelled input for speaker use
+    '';
   };
 
   config = lib.mkIf cfg.enable {
@@ -79,6 +103,10 @@ in
 
       extraConfig.pipewire-pulse."90-rvc-virtual-mic" = {
         "pulse.cmd" = virtualMicPulseCommands;
+      };
+
+      extraConfig.pipewire."90-rvc-echo-cancellation" = lib.mkIf cfg.virtualMic.echoCancellation.enable {
+        "context.modules" = [ echoCancellationModule ];
       };
     };
 
@@ -98,10 +126,27 @@ in
         # Stable ALSA name for feeding the RVC PipeWire output. PipeWire
         # negotiates the audio format; no physical device is selected here.
         pcm."RVC-Output" {
-          type pipewire
-          playback_node "rvc_output"
+          type asym
+          playback.pcm {
+            type pipewire
+            playback_node "rvc_output"
+          }
           hint { show on description "RVC-Output" }
         }
+
+        ${lib.optionalString cfg.virtualMic.echoCancellation.enable ''
+          # Input-only endpoint backed by PipeWire's WebRTC AEC. In monitor
+          # mode it correlates the default microphone with the default sink's
+          # monitor, so physical device names never need to be hard-coded.
+          pcm."RVC-Echo-Cancelled-Input" {
+            type asym
+            capture.pcm {
+              type pipewire
+              capture_node "rvc_echo_cancelled_input"
+            }
+            hint { show on description "RVC-Echo-Cancelled-Input" }
+          }
+        ''}
       '';
     };
 

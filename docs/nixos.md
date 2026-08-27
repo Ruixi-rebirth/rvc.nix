@@ -58,6 +58,9 @@ voice `.pth` model; place one in the user data directory as described in the
 | `programs.rvc.webui.port` | `7865` | WebUI starting port |
 | `programs.rvc.virtualMic.enable` | `false` | Create virtual audio devices |
 
+`programs.rvc.virtualMic.echoCancellation.enable` also defaults to `false`. It
+adds a WebRTC echo-cancelled input for physical speaker use.
+
 PipeWire, WirePlumber, ALSA, PulseAudio compatibility, and rtkit are enabled
 only when `virtualMic.enable` is true. Installing RVC alone does not change the
 existing audio services.
@@ -116,6 +119,43 @@ The two applications use different devices by design:
 Realtime GUI is stopped or produces no output. PipeWire negotiates sample rate,
 channel count, and channel mapping. The module does not force an audio format
 or play converted audio back to the local user.
+
+## Use speakers without acoustic feedback
+
+When a physical microphone picks up speaker output, that audio can enter RVC
+again and create an echo or feedback loop. The Realtime GUI input/output noise
+reduction switches are not acoustic echo cancellation. Headphones remain the
+lowest-latency and most reliable solution.
+
+To use physical speakers, enable PipeWire's WebRTC echo canceller:
+
+```nix
+programs.rvc.virtualMic = {
+  enable = true;
+  echoCancellation.enable = true;
+};
+```
+
+This adds `RVC-Echo-Cancelled-Input`. It correlates the current PipeWire default
+microphone with the monitor of the current default output, so no physical ALSA
+device name is hard-coded. Choose the physical microphone and speakers as the
+PipeWire defaults, then use one of these RVC configurations:
+
+| Purpose | Realtime GUI input | Realtime GUI output |
+| --- | --- | --- |
+| Voice application | `RVC-Echo-Cancelled-Input` | `RVC-Output` |
+| Local speaker test | `RVC-Echo-Cancelled-Input` | `pipewire` |
+
+For a voice application, keep its microphone set to `RVC-Microphone` and its
+playback output set to the physical speakers. For a local speaker test, the
+generic `pipewire` output plays the converted voice locally but does not feed
+`RVC-Microphone`.
+
+Echo cancellation only removes audio observed on the default output monitor.
+Applications routed to another sink are outside that reference path. AEC also
+adds processing and cannot fully compensate for every room, volume, microphone,
+or speaker placement, which is why it is optional rather than enabled by
+default.
 
 ## WebUI user service
 

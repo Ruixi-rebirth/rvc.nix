@@ -56,6 +56,9 @@ modules = [
 | `programs.rvc.webui.port` | `7865` | WebUI 起始端口 |
 | `programs.rvc.virtualMic.enable` | `false` | 创建虚拟输出和虚拟麦克风 |
 
+`programs.rvc.virtualMic.echoCancellation.enable` 同样默认为 `false`，用于在
+使用物理扬声器时创建 WebRTC 回声消除输入。
+
 只有启用 `virtualMic.enable` 后，模块才会启用 PipeWire、WirePlumber、ALSA、
 PulseAudio 兼容层和 rtkit。只安装 RVC 不会改变已有的音频服务设置。
 
@@ -110,6 +113,38 @@ rvc-realtime
 `RVC-Microphone` 只反映 RVC 写入的音频。Realtime GUI 没有运行或没有输出时，
 它保持静音。采样率、声道数和声道映射由 PipeWire 协商，模块不会强行固定音频
 格式，也不会自动把变声后的声音播放给本机用户。
+
+## 不用耳机时消除声学回声
+
+物理麦克风收到扬声器播放的声音后，这部分声音会再次进入 RVC，形成回声或反馈
+环路。Realtime GUI 中的输入降噪和输出降噪并不是声学回声消除。耳机仍是延迟
+最低、效果最稳定的方案。
+
+需要使用物理扬声器时，可以启用 PipeWire 的 WebRTC 回声消除器：
+
+```nix
+programs.rvc.virtualMic = {
+  enable = true;
+  echoCancellation.enable = true;
+};
+```
+
+启用后会出现 `RVC-Echo-Cancelled-Input`。它会比较 PipeWire 当前默认麦克风和
+当前默认输出的监听信号，因此不需要硬编码 PCH 等物理 ALSA 设备名。先在桌面声音
+设置中选好默认麦克风和扬声器，再按用途选择 RVC 设备：
+
+| 用途 | Realtime GUI 输入 | Realtime GUI 输出 |
+| --- | --- | --- |
+| 语音软件 | `RVC-Echo-Cancelled-Input` | `RVC-Output` |
+| 本机扬声器试听 | `RVC-Echo-Cancelled-Input` | `pipewire` |
+
+用于语音软件时，软件的麦克风仍选择 `RVC-Microphone`，播放输出选择物理扬声器。
+本机试听时，通用 `pipewire` 输出会把变声结果播放到扬声器，但不会同时写入
+`RVC-Microphone`。
+
+回声消除只能去除默认输出监听信号中实际出现的声音；如果某个程序被路由到其他
+输出设备，它就不在回声参考链路中。AEC 还会增加少量处理，并且无法完全补偿所有
+房间声学、音量、麦克风和扬声器摆放情况，因此该功能保持可选，不会默认启用。
 
 ## WebUI 用户服务
 

@@ -35,12 +35,17 @@ let
         host = "192.0.2.10";
         port = 9000;
       };
-      virtualMic.enable = true;
+      virtualMic = {
+        enable = true;
+        echoCancellation.enable = true;
+      };
     }).config;
 
   virtualCommands =
     configured.services.pipewire.extraConfig.pipewire-pulse."90-rvc-virtual-mic"."pulse.cmd";
   virtualRestartTriggers = configured.systemd.user.services.pipewire-pulse.restartTriggers;
+  echoModules =
+    configured.services.pipewire.extraConfig.pipewire."90-rvc-echo-cancellation"."context.modules";
   invalidLowPort = builtins.tryEval (
     builtins.deepSeq (evalModule { webui.port = 0; }).config.programs.rvc.webui.port true
   );
@@ -72,6 +77,7 @@ assert defaults.environment.sessionVariables.RVC_WEBUI_PORT == "7865";
 assert configured.environment.sessionVariables.RVC_WEBUI_HOST == "192.0.2.10";
 assert configured.environment.sessionVariables.RVC_WEBUI_PORT == "9000";
 assert defaults.services.pipewire.extraConfig.pipewire-pulse."90-rvc-virtual-mic" or { } == { };
+assert defaults.services.pipewire.extraConfig.pipewire."90-rvc-echo-cancellation" or { } == { };
 assert defaults.environment.etc."alsa/conf.d/60-rvc.conf" or { } == { };
 assert defaults.systemd.user.services.rvc-webui or { } == { };
 assert builtins.length virtualCommands == 2;
@@ -89,9 +95,20 @@ assert
     }
   ];
 assert virtualRestartTriggers == [ (builtins.toJSON virtualCommands) ];
+assert builtins.length echoModules == 1;
+assert (builtins.head echoModules).name == "libpipewire-module-echo-cancel";
+assert (builtins.head echoModules).args."library.name" == "aec/libspa-aec-webrtc";
+assert (builtins.head echoModules).args."monitor.mode";
+assert (builtins.head echoModules).args."source.props"."node.name" == "rvc_echo_cancelled_input";
 assert
   builtins.match ".*pcm\\.\"RVC-Output\".*" configured.environment.etc."alsa/conf.d/60-rvc.conf".text
   != null;
+assert
+  builtins.match ".*pcm\\.\"RVC-Echo-Cancelled-Input\".*"
+    configured.environment.etc."alsa/conf.d/60-rvc.conf".text != null;
+assert
+  builtins.match ".*capture_node \"rvc_echo_cancelled_input\".*"
+    configured.environment.etc."alsa/conf.d/60-rvc.conf".text != null;
 assert configured.systemd.user.services.rvc-webui.after == [ "graphical-session.target" ];
 assert configured.systemd.user.services.rvc-webui.partOf == [ "graphical-session.target" ];
 assert configured.systemd.user.services.rvc-webui.wantedBy == [ "graphical-session.target" ];
@@ -111,5 +128,15 @@ pkgs.runCommand "rvc-nixos-module-test" { nativeBuildInputs = [ pkgs.jq ]; } ''
     (.["pulse.cmd"] | length == 2) and
     (.["pulse.cmd"][0].args | contains("sink_name=rvc_output"))
   ' "$config" >/dev/null
+
+  echo_config=${generatedConfig}/pipewire.conf.d/90-rvc-echo-cancellation.conf
+  test -f "$echo_config"
+  jq --exit-status '
+    (.["context.modules"] | length == 1) and
+    (.["context.modules"][0].name == "libpipewire-module-echo-cancel") and
+    (.["context.modules"][0].args["monitor.mode"] == true) and
+    (.["context.modules"][0].args["source.props"]["node.name"] ==
+      "rvc_echo_cancelled_input")
+  ' "$echo_config" >/dev/null
   touch "$out"
 ''
