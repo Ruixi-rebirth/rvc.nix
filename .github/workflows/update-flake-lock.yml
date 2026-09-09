@@ -23,7 +23,7 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@021c8a1bd3570eb21f5c20a054812b0c4d9ca614 # v3.22.3
 
       - name: Update flake.lock
-        uses: DeterminateSystems/update-flake-lock@a2bbe0274e3a0c4194390a1e445f734c597ebc37 # v24
+        uses: DeterminateSystems/update-flake-lock@834c491b2ece4de0bbd00d85214bb5e83b4da5c6 # v28
         with:
           pr-title: "Update flake inputs"
           # `rvc-src` is deliberately excluded: the upstream RVC revision is
