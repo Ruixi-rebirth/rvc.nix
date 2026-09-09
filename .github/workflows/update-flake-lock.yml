@@ -23,9 +23,23 @@ jobs:
         uses: DeterminateSystems/determinate-nix-action@527f17dd63d2d60d3e5552934bc84b9a33a14d11 # v3.22.2
 
       - name: Update flake.lock
-        uses: DeterminateSystems/update-flake-lock@a2bbe0274e3a0c4194390a1e445f734c597ebc37 # v24
+        # `rvc-src` is deliberately excluded: the upstream RVC revision is
+        # updated only through the reviewed process in CONTRIBUTING.md.
+        run: >-
+          nix flake update
+          nixpkgs
+          flake-parts
+          treefmt-nix
+          pyproject-nix
+          uv2nix
+          pyproject-build-systems
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          pr-title: "Update flake inputs"
-          # `rvc-src` is deliberately excluded: the upstream RVC revision is
-          # updated only through the reviewed process in CONTRIBUTING.md.
-          inputs: nixpkgs flake-parts treefmt-nix pyproject-nix uv2nix pyproject-build-systems
+          branch: update_flake_lock_action
+          delete-branch: true
+          add-paths: flake.lock
+          commit-message: "flake.lock: Update"
+          title: "Update flake inputs"
+          body: "Automated weekly update of the repository's flake inputs."

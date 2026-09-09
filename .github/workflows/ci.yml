@@ -32,7 +32,7 @@ jobs:
       # configuration by default).
       - name: Set up Cachix binary cache
         if: github.ref == 'refs/heads/main'
-        uses: cachix/cachix-action@ad2ddac53f961de1989924296a1f236fcfbaa4fc # v15
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
           name: ruixi-rebirth
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
@@ -74,7 +74,7 @@ jobs:
 
       - name: Set up Cachix binary cache
         if: github.ref == 'refs/heads/main'
-        uses: cachix/cachix-action@ad2ddac53f961de1989924296a1f236fcfbaa4fc # v15
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
           name: ruixi-rebirth
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
